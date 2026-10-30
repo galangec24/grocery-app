@@ -14,6 +14,7 @@ from .db import utcnow
 
 HEADERS = {"User-Agent": "GroceryPriceFinder/1.0 (+https://github.com/galangec24/grocery-app)"}
 NOMINATIM = "https://nominatim.openstreetmap.org"
+OSRM = "https://router.project-osrm.org/route/v1/driving"
 OVERPASS = ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter"]
 ATTRIBUTION = "Map data © OpenStreetMap contributors"
 CACHE_DAYS = 7
@@ -141,6 +142,29 @@ def _cached(db: Database, key: str, build) -> dict:
     if value["stores"]:  # An empty list may be a map outage, so ask again next time.
         db.location_cache.replace_one({"_id": key}, {"_id": key, "value": value, "cached_at": utcnow()}, upsert=True)
     return value
+
+
+def route(start: tuple[float, float], end: tuple[float, float]) -> dict:
+    """Road directions, falling back to a straight line if the routing service is down."""
+    url = f"{OSRM}/{start[1]},{start[0]};{end[1]},{end[0]}"
+    try:
+        with httpx.Client(headers=HEADERS, timeout=httpx.Timeout(10, connect=5)) as http:
+            response = http.get(url, params={"overview": "simplified", "geometries": "geojson"})
+            response.raise_for_status()
+            found = response.json()["routes"][0]
+        return {
+            "path": [[lat, lon] for lon, lat in found["geometry"]["coordinates"]],
+            "distance_km": round(found["distance"] / 1000, 2),
+            "duration_min": round(found["duration"] / 60),
+            "road": True,
+        }
+    except (httpx.HTTPError, KeyError, IndexError, ValueError):
+        return {
+            "path": [list(start), list(end)],
+            "distance_km": round(cmp.haversine_km(*start, *end), 2),
+            "duration_min": None,
+            "road": False,
+        }
 
 
 def resolve(db: Database, latitude: float | None, longitude: float | None, city: str | None) -> dict:

@@ -25,7 +25,9 @@ Prices are as live as these publications, not minute by minute. **No public sour
 Location therefore finds the shopper's real city, lists its malls and supermarkets from OpenStreetMap, and
 applies the SRPs for that island group. Store-specific prices arrive when retailers connect through the dashboard.
 
-Products outside these lists, such as Mega Sardines, Piatos, pet food, appliances and perfume, come from a built-in brand catalog in `backend/app/catalog.py`. It holds names and sizes only. Shoppers enter the shelf price themselves, and administrators can add products from the dashboard.
+Products come from the [Open Food Facts](https://world.openfoodfacts.org) family of open databases (ODbL), about 9,800 items sold in the Philippines, copied into MongoDB in small batches. Administrators can add more from the dashboard, for example when a mall partners with the app.
+
+Store prices come from [Open Prices](https://prices.openfoodfacts.org) and shoppers who share what they see. Coverage is thin for now, because no free source has complete Philippine shelf prices. Every price shows where it came from, and nothing is estimated.
 
 Drafts, the budget and saved purchases stay on the device, so they need no account but don't move between devices.
 

@@ -123,8 +123,16 @@ export function PriceBoard({ compact }: { compact?: boolean }) {
   }, [island]);
 
   useEffect(() => {
-    api<CatalogItem[]>("/market/catalog").then(setCatalog).catch(() => setCatalog([]));
-  }, []);
+    const words = term.trim();
+    if (!words) { setCatalog([]); return; }
+    let live = true;
+    const timer = setTimeout(() => {
+      api<CatalogItem[]>(`/market/catalog${query({ q: words, limit: 24 })}`)
+        .then((found) => { if (live) setCatalog(found); })
+        .catch(() => { if (live) setCatalog([]); });
+    }, 250);
+    return () => { live = false; clearTimeout(timer); };
+  }, [term]);
 
   const categories = useMemo(
     () => [...new Set((rows ?? []).filter((r) => !source || r.source === source).map((r) => r.category))].sort(),
@@ -147,11 +155,7 @@ export function PriceBoard({ compact }: { compact?: boolean }) {
     });
   }, [rows, term, source, category, sort]);
 
-  const brands = useMemo(() => {
-    const words = term.toLowerCase().split(/\s+/).filter(Boolean);
-    if (!words.length) return [];
-    return catalog.filter((item) => words.every((w) => item.keywords.includes(w) || (w.endsWith("s") && item.keywords.includes(w.slice(0, -1)))));
-  }, [catalog, term]);
+  const brands = catalog;
 
   useEffect(() => setPage(1), [term, source, category, sort, island]);
   const pages = Math.max(1, Math.ceil(shown.length / PAGE_SIZE));
@@ -210,14 +214,15 @@ export function PriceBoard({ compact }: { compact?: boolean }) {
         {brands.length > 0 && (
           <div className="brand-results">
             <h3>Found in stores</h3>
-            <p className="hint">These brands have no official price yet. Add one to your draft and enter the shelf price.</p>
+            <p className="hint">Tap a product for its price history. Add it to your list to see prices near you.</p>
             <div className="brand-grid">
               {brands.slice(0, 24).map((item) => (
                 <article className="brand-card clickable" key={item.id} tabIndex={0}
                   onClick={() => setSubject({ kind: "brand", item })}
                   onKeyDown={(e) => { if (e.key === "Enter") setSubject({ kind: "brand", item }); }}>
+                  {item.image_url && <img className="brand-photo" src={item.image_url} alt="" loading="lazy" />}
                   <strong>{item.name}</strong>
-                  <small>{item.size} · {item.category}</small>
+                  <small>{item.variant && <b className="size-tag">{item.variant}</b>} {item.size} · {item.category}</small>
                   <button className="mini" onClick={(e) => { e.stopPropagation(); addBrand(item); }} disabled={added === item.id}>{added === item.id ? "Added" : "Add to draft"}</button>
                 </article>
               ))}

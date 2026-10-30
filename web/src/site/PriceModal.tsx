@@ -1,12 +1,41 @@
 import { useEffect, useRef, useState } from "react";
-import { CatalogItem, PriceRow } from "../api";
+import { api, CatalogItem, PricePoint, PriceRow } from "../api";
 import { longDate, peso } from "../format";
 
 export type ModalSubject = { kind: "price"; row: PriceRow } | { kind: "brand"; item: CatalogItem };
 
-function TrendChart({ row }: { row: PriceRow }) {
+function BrandPrices({ item }: { item: CatalogItem }) {
+  const [points, setPoints] = useState<PricePoint[] | null>(null);
+
+  useEffect(() => {
+    api<{ points: PricePoint[] }>(`/market/catalog/${encodeURIComponent(item.id)}/prices`)
+      .then((r) => setPoints(r.points)).catch(() => setPoints([]));
+  }, [item.id]);
+
+  if (points === null) return <p className="muted">Checking for prices…</p>;
+  if (points.length === 0) {
+    return <p className="note">No price has been reported for this product yet. Add it to your list, enter the shelf price and share it to help other shoppers.</p>;
+  }
+  const latest = points[points.length - 1];
+  return (
+    <>
+      <p className="modal-price">{peso(latest.price)}</p>
+      <p className="muted">{latest.store}, {longDate(latest.date.slice(0, 10))} ({latest.origin})</p>
+      <TrendChart values={points.map((p) => p.price)} label="Reported prices" />
+      <ul className="plain">
+        {[...points].reverse().slice(0, 6).map((p) => (
+          <li className="purchase-row" key={p.date + p.store}>
+            <span>{p.store}<small>{longDate(p.date.slice(0, 10))} · {p.origin}</small></span>
+            <span className="price">{peso(p.price)}</span>
+          </li>
+        ))}
+      </ul>
+    </>
+  );
+}
+
+function TrendChart({ values, label }: { values: number[]; label: string }) {
   const [hover, setHover] = useState<number | null>(null);
-  const values = row.trend;
   if (values.length < 2) return null;
   const low = Math.min(...values);
   const high = Math.max(...values);
@@ -20,7 +49,7 @@ function TrendChart({ row }: { row: PriceRow }) {
   return (
     <figure className="trend">
       <figcaption>
-        <span>Last {values.length} reports</span>
+        <span>{label}</span>
         <b>{peso(values[shown])}</b>
       </figcaption>
       <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`Price from ${peso(values[0])} to ${peso(values[values.length - 1])}`}
@@ -63,7 +92,7 @@ export function PriceModal({ subject, onClose, onAdd, added }: {
                 {subject.row.change > 0 ? "▲" : "▼"} {peso(Math.abs(subject.row.change))} since the last report
               </p>
             )}
-            <TrendChart row={subject.row} />
+            <TrendChart values={subject.row.trend} label={`Last ${subject.row.trend.length} reports`} />
             <dl>
               <div><dt>Category</dt><dd>{subject.row.category}</dd></div>
               <div><dt>Applies to</dt><dd>{subject.row.region}</dd></div>
@@ -76,8 +105,8 @@ export function PriceModal({ subject, onClose, onAdd, added }: {
           <>
             <p className="modal-kind">Found in stores</p>
             <h2>{subject.item.name}</h2>
-            <p className="muted">{subject.item.size} · {subject.item.category}</p>
-            <p className="note">No official price is published for this product. Add it to your draft and enter the price on the shelf.</p>
+            <p className="muted">{subject.item.variant && `${subject.item.variant}, `}{subject.item.size} · {subject.item.category}</p>
+            <BrandPrices item={subject.item} />
           </>
         )}
         <button className="btn primary block" onClick={onAdd} disabled={added}>{added ? "Added to draft" : "Add to draft"}</button>

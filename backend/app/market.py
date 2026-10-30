@@ -12,10 +12,10 @@ from datetime import timedelta
 import httpx
 from pymongo.database import Database
 
-from . import catalog
+from . import community
 from . import comparison as cmp
 from .db import client, new_id, supports_transactions, utcnow
-from .sources import da_dpi, dti_srp
+from .sources import da_dpi, dti_srp, open_data
 
 log = logging.getLogger("grocery.market")
 HEADERS = {"User-Agent": "GroceryPriceFinder/1.0 (+https://github.com/galangec24/grocery-app)"}
@@ -111,6 +111,12 @@ def ingest(db: Database) -> None:
         except Exception as error:
             log.warning("DA check failed: %s", error)
             _record(db, "da_dpi", da_dpi.LISTING_URL, "failed", error=f"{type(error).__name__}: {error}"[:300])
+
+    try:
+        with httpx.Client(headers=open_data.HEADERS, timeout=45, follow_redirects=True) as http:
+            open_data.sync_prices(db, http)
+    except Exception as error:
+        log.warning("Open Prices check failed: %s", error)
 
     cutoff = (utcnow() - timedelta(days=RETAIN_DAYS)).date().isoformat()
     db.market_prices.delete_many({"source": "da_dpi", "report_date": {"$lt": cutoff}})
@@ -210,11 +216,11 @@ def _rank(row: dict, tokens: list[str]) -> tuple:
     return (not all(t in name for t in tokens), row["kind"] != "srp" and len(name) > 30, len(name), row["price"])
 
 
-def basket(rows: list[dict], items: list[dict], products: list[dict] | None = None) -> dict:
+def basket(rows: list[dict], items: list[dict], find_products=lambda query: [], reports: list[dict] | None = None) -> dict:
     """Cost a list. Official prices first, then the shopper's own shelf prices.
 
     A product in the brand catalog has no official price, so it stays out of the total
-    until the shopper enters one. Prices are never guessed.
+    until a shopper reports one or the shopper enters their own. Prices are never guessed.
     """
     by_id = {r["id"]: r for r in rows}
     lines, total = [], 0
@@ -223,27 +229,32 @@ def basket(rows: list[dict], items: list[dict], products: list[dict] | None = No
         custom = item.get("custom_price")
         matched = sorted(search(rows, query), key=lambda r: _rank(r, cmp.tokenize(query)))
         chosen = by_id.get(item.get("price_id")) or (matched[0] if matched else None)
-        brand = catalog.search(query, products)
+        brand = find_products(query) if custom is None and not chosen else []
         status = "no_match"
         unit_centavos = 0
+        report = None
         label = query
         if custom is not None:
             status, unit_centavos, chosen = "custom", round(custom * 100), None
         elif chosen:
             status, unit_centavos, label = "matched", round(chosen["price"] * 100), chosen["commodity"]
+        elif (seen := community.lowest_by_query(reports or [], query)):
+            status, unit_centavos, label = "reported", seen["price_centavos"], seen["item_name"]
+            report = community.report_json(seen)
         elif brand:
-            status, label = "needs_price", f'{brand[0]["name"]} {brand[0]["size"]}'
+            status, label = "needs_price", f'{brand[0]["name"]} {brand[0]["size"]}'.strip()
         line_total = unit_centavos * item["quantity"]
         total += line_total
         lines.append({
             "query": query, "quantity": item["quantity"], "status": status, "label": label,
             "selected": chosen, "unit_price": cmp.money(unit_centavos), "line_total": cmp.money(line_total),
+            "report": report,
             "candidates": [
                 {key: r[key] for key in ("id", "commodity", "specification", "unit", "price", "source_label", "region")}
                 for r in matched[:12]
             ],
         })
-    counted = [l for l in lines if l["status"] in ("matched", "custom")]
+    counted = [l for l in lines if l["status"] in ("matched", "custom", "reported")]
     return {
         "lines": lines, "total": cmp.money(total), "currency": "PHP",
         "items_matched": len(counted),

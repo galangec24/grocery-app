@@ -115,6 +115,19 @@ def test_city_still_resolves_when_every_store_map_is_down(client, db, osm):
     assert db.location_cache.count_documents({}) == 0, "an outage must not be cached"
 
 
+def test_route_falls_back_to_a_straight_line(client, monkeypatch):
+    class Down:
+        def __init__(self, *a, **k): pass
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def get(self, *a, **k): raise location.httpx.ConnectTimeout("down")
+
+    monkeypatch.setattr(location.httpx, "Client", Down)
+    params = dict(from_lat=10.31, from_lon=123.88, to_lat=10.33, to_lon=123.91)
+    data = client.get("/api/v1/location/route", params=params).json()
+    assert data["road"] is False and data["path"] == [[10.31, 123.88], [10.33, 123.91]] and data["distance_km"] > 3
+
+
 def test_requests_need_a_location_or_city(client):
     assert client.get("/api/v1/location/resolve").status_code == 422
     assert client.get("/api/v1/location/resolve", params={"latitude": 10}).status_code == 422

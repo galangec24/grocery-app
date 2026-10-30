@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../api.dart';
+import '../best_store.dart';
 import '../calculator.dart';
 import '../drafts.dart';
 import '../purchases.dart';
@@ -80,6 +81,7 @@ class _ListEditorState extends State<ListEditor> {
                 })
             .toList(),
         island: state.city?.island,
+        city: state.city?.city,
       );
       if (!mounted) return;
       setState(() {
@@ -111,6 +113,43 @@ class _ListEditorState extends State<ListEditor> {
     _changed();
   }
 
+  Future<void> _sharePrices() async {
+    final state = AppScope.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final city = state.city;
+    if (city == null || city.stores.isEmpty) {
+      messenger.showSnackBar(const SnackBar(content: Text('Find your city on the Prices tab first.')));
+      return;
+    }
+    final store = await showModalBottomSheet<CityStore>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: ListView(shrinkWrap: true, children: [
+          const ListTile(title: Text('Where did you see these prices?'), subtitle: Text('Only the item, price and store are shared.')),
+          for (final s in city.stores)
+            ListTile(
+              title: Text(s.name),
+              subtitle: Text('${s.type} · ${s.distanceKm.toStringAsFixed(1)} km'),
+              onTap: () => Navigator.pop(context, s),
+            ),
+        ]),
+      ),
+    );
+    if (store == null) return;
+    var shared = 0;
+    for (final item in _draft.items.where((i) => (i.customPrice ?? 0) > 0)) {
+      final held = await state.api.shareShelfPrice(
+        name: _lineFor(item)?.label ?? item.query,
+        store: store,
+        city: city.city,
+        price: item.customPrice!,
+      );
+      if (!held) shared++;
+    }
+    messenger.showSnackBar(SnackBar(content: Text('Thanks! $shared shared with shoppers in ${city.city}.')));
+    _schedule();
+  }
+
   Future<void> _savePurchase() async {
     final basket = _basket;
     if (basket == null) return;
@@ -129,7 +168,7 @@ class _ListEditorState extends State<ListEditor> {
       total: basket.total,
       lines: [
         for (final line in basket.lines)
-          if (line.status == 'matched' || line.status == 'custom')
+          if (line.lineTotal > 0)
             PurchaseLine(
               name: line.status == 'custom' ? line.query : line.label,
               quantity: line.quantity,
@@ -184,7 +223,17 @@ class _ListEditorState extends State<ListEditor> {
         ),
       const SizedBox(height: 14),
       ReceiptCard(draft: _draft, basket: basket),
+      const SizedBox(height: 14),
+      BestStoreCard(queries: _draft.items.map((i) => i.query).toList()),
       const SizedBox(height: 12),
+      if (_draft.items.any((i) => (i.customPrice ?? 0) > 0)) ...[
+        OutlinedButton.icon(
+          onPressed: _sharePrices,
+          icon: const Icon(Icons.campaign_outlined),
+          label: const Text('Share prices with other shoppers'),
+        ),
+        const SizedBox(height: 8),
+      ],
       if (basket != null && basket.total > 0) ...[
         FilledButton.icon(
           onPressed: _savePurchase,
@@ -221,11 +270,13 @@ class _ItemRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final current = line;
     final askPrice = item.customPrice != null ||
+        current?.status == 'reported' ||
         current?.status == 'needs_price' ||
         current?.status == 'no_match';
     final note = switch (current?.status) {
       'matched' => '${peso(current!.unitPrice)} per ${current.selected!.unit}',
-      'needs_price' => 'No official price. Enter the shelf price.',
+      'reported' => 'Reported at ${current!.reportedStore}',
+      'needs_price' => 'No price yet. Be the first to enter it.',
       'no_match' => 'Not in our lists. Enter a price to count it.',
       'custom' => 'Your shelf price',
       _ => null,

@@ -6,7 +6,9 @@ import { peso } from "../format";
 import { savePurchase } from "../purchases";
 import { useLocation } from "../location";
 import { navigate } from "../router";
+import { BestStore } from "./BestStore";
 import { Calculator } from "./Calculator";
+import { DateTimePicker } from "./DateTimePicker";
 import { Receipt } from "./Receipt";
 
 /** Type or paste a list, watch the receipt build, and optionally keep it as a draft. */
@@ -115,7 +117,9 @@ function ListEditor({ draft, onChange, bulk, header, footer }: {
   const { city } = useLocation();
   const { budget, setSpent } = useBudget();
   const [text, setText] = useState("");
-  const [purchaseDate, setPurchaseDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [purchaseDate, setPurchaseDate] = useState(() => new Date());
+  const [storeIndex, setStoreIndex] = useState("");
+  const [shareNote, setShareNote] = useState<string | null>(null);
   const [savedTrip, setSavedTrip] = useState(false);
   const [result, setResult] = useState<BasketResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -140,7 +144,7 @@ function ListEditor({ draft, onChange, bulk, header, footer }: {
       try {
         const data = await postJson<BasketResponse>("/market/basket", {
           items: draft.items.map((i) => ({ query: i.query, quantity: i.quantity, price_id: i.priceId, custom_price: i.customPrice })),
-          ...(city ? { island: city.island } : {}),
+          ...(city ? { island: city.island, city: city.city } : {}),
         });
         if (!live) return;
         setResult(data);
@@ -190,12 +194,30 @@ function ListEditor({ draft, onChange, bulk, header, footer }: {
   function saveTrip() {
     if (!result) return;
     savePurchase({
-      name: draft.name || "Shopping trip", date: purchaseDate, total: result.total, budget,
+      name: draft.name || "Shopping trip", total: result.total, budget,
+      date: `${purchaseDate.getFullYear()}-${String(purchaseDate.getMonth() + 1).padStart(2, "0")}-${String(purchaseDate.getDate()).padStart(2, "0")}`,
+      time: purchaseDate.toTimeString().slice(0, 5),
       lines: result.lines
-        .filter((l) => l.status === "matched" || l.status === "custom")
+        .filter((l) => l.line_total > 0)
         .map((l) => ({ name: l.status === "custom" ? l.query : l.label, quantity: l.quantity, unitPrice: l.unit_price, lineTotal: l.line_total })),
     });
     setSavedTrip(true);
+  }
+
+  async function sharePrices() {
+    const store = city?.stores[Number(storeIndex)];
+    if (!store || !city) return;
+    const priced = draft.items.filter((i) => i.customPrice && i.customPrice > 0);
+    try {
+      const results = await Promise.all(priced.map((item) => postJson<{ held_for_review: boolean }>("/market/shelf-prices", {
+        name: lineFor(item)?.label ?? item.query, store_name: store.name,
+        latitude: store.latitude, longitude: store.longitude, city: city.city, price: item.customPrice,
+      })));
+      const held = results.filter((r) => r.held_for_review).length;
+      setShareNote(`Thanks! ${priced.length - held} ${priced.length - held === 1 ? "price" : "prices"} shared with shoppers in ${city.city}.${held ? ` ${held} held for review.` : ""}`);
+    } catch (e) {
+      setShareNote((e as Error).message);
+    }
   }
 
   const lineFor = (item: DraftItem) => result?.lines.find((l) => l.query === item.query);
@@ -225,7 +247,7 @@ function ListEditor({ draft, onChange, bulk, header, footer }: {
           <ul className="items">
             {draft.items.map((item) => {
               const line = lineFor(item);
-              const needsPrice = line?.status === "needs_price" || line?.status === "no_match" || item.customPrice !== undefined;
+              const needsPrice = line?.status === "needs_price" || line?.status === "no_match" || line?.status === "reported" || item.customPrice !== undefined;
               return (
                 <li key={item.id} className={item.checked ? "done" : ""}>
                   <input type="checkbox" checked={!!item.checked} aria-label={`${item.query} in cart`}
@@ -233,7 +255,8 @@ function ListEditor({ draft, onChange, bulk, header, footer }: {
                   <span className="item-name">
                     {line?.status === "custom" ? item.query : line?.label ?? item.query}
                     {line?.selected && <small>{peso(line.selected.price)} per {line.selected.unit}</small>}
-                    {line?.status === "needs_price" && <small>No official price. Enter the shelf price.</small>}
+                    {line?.status === "needs_price" && <small>No price yet. Be the first to enter it.</small>}
+                    {line?.status === "reported" && line.report && <small className="reported">₱{line.report.price.toFixed(2)} at {line.report.store_name}, {line.report.origin === "Open Prices" ? `Open Prices, ${new Date(line.report.reported_at).toLocaleDateString("en-PH", { dateStyle: "medium" })}` : "reported by a shopper"}</small>}
                     {line?.status === "no_match" && <small>Not in our lists. Enter a price to count it.</small>}
                     {line?.status === "matched" && line.candidates.length > 1 && (
                       <select className="swap" aria-label={`Change ${item.query}`} value={line.selected!.id} onChange={(e) => pick(line, e.target.value)}>
@@ -261,16 +284,33 @@ function ListEditor({ draft, onChange, bulk, header, footer }: {
           </ul>
         )}
         {error && <p className="error" role="alert">{error}</p>}
+        {draft.items.some((i) => i.customPrice) && (
+          <div className="share-prices">
+            <strong>Help other shoppers</strong>
+            {city && city.stores.length > 0 ? (
+              <>
+                <p className="hint">Tell us where you saw these prices. Only the item, price and store are shared.</p>
+                <div className="share-row">
+                  <select aria-label="Store where you saw these prices" value={storeIndex} onChange={(e) => { setStoreIndex(e.target.value); setShareNote(null); }}>
+                    <option value="">Choose the store</option>
+                    {city.stores.map((store, index) => <option key={`${store.name}${store.latitude}`} value={index}>{store.name} ({store.distance_km.toFixed(1)} km)</option>)}
+                  </select>
+                  <button className="btn primary" disabled={storeIndex === ""} onClick={sharePrices}>Share prices</button>
+                </div>
+              </>
+            ) : <p className="hint">Find your city on the Prices tab to share these prices.</p>}
+            {shareNote && <p className="hint" role="status">{shareNote}</p>}
+          </div>
+        )}
         {footer}
       </section>
 
       <aside className="side">
         <Receipt draft={draft} data={result} inCart={inCart} />
+        <BestStore items={draft.items.map((i) => i.query)} />
         {result && result.total > 0 && (
           <div className="save-trip">
-            <label>Date of purchase
-              <input type="date" value={purchaseDate} onChange={(e) => { setPurchaseDate(e.target.value); setSavedTrip(false); }} />
-            </label>
+            <DateTimePicker value={purchaseDate} onChange={(date) => { setPurchaseDate(date); setSavedTrip(false); }} />
             <button className="btn primary" disabled={savedTrip} onClick={saveTrip}>{savedTrip ? "Saved to Reports" : "Save this purchase"}</button>
           </div>
         )}

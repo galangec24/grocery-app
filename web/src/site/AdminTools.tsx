@@ -15,6 +15,15 @@ interface Retailer {
   stores: number;
 }
 
+interface ShelfReport {
+  id: string;
+  status: string;
+  item_name: string;
+  store_name: string;
+  city: string;
+  price: number;
+}
+
 interface CatalogEntry {
   id: string;
   name: string;
@@ -37,6 +46,7 @@ export function AdminTools({ onChanged }: { onChanged: () => void }) {
   const [users, setUsers] = useState<Account[]>([]);
   const [retailers, setRetailers] = useState<Retailer[]>([]);
   const [catalog, setCatalog] = useState<CatalogEntry[]>([]);
+  const [reports, setReports] = useState<ShelfReport[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState({ email: "", full_name: "", password: "", role: "supervisor", organization_id: "" });
@@ -44,12 +54,13 @@ export function AdminTools({ onChanged }: { onChanged: () => void }) {
   const [item, setItem] = useState({ name: "", brand: "", category: "", size: "" });
 
   const load = useCallback(async () => {
-    const [u, r, c] = await Promise.all([
+    const [u, r, c, s] = await Promise.all([
       api<Account[]>("/admin/users", {}, true),
       api<Retailer[]>("/admin/organizations", {}, true),
       api<CatalogEntry[]>("/admin/catalog", {}, true),
+      api<ShelfReport[]>("/admin/shelf-prices", {}, true),
     ]);
-    setUsers(u); setRetailers(r); setCatalog(c);
+    setUsers(u); setRetailers(r); setCatalog(c); setReports(s);
   }, []);
 
   useEffect(() => { load().catch((e) => setError(e.message)); }, [load]);
@@ -139,6 +150,31 @@ export function AdminTools({ onChanged }: { onChanged: () => void }) {
           )}
           <button className="btn primary">Add account</button>
         </form>
+      </section>
+
+      <section className="card">
+        <h2>Shopper-reported prices</h2>
+        {reports.length === 0 && <p className="muted">No shopper has reported a price yet.</p>}
+        {reports.length > 0 && (
+          <div className="table-scroll">
+            <table>
+              <thead><tr><th>Item</th><th>Store</th><th>City</th><th className="num">Price</th><th>Status</th><th /></tr></thead>
+              <tbody>
+                {reports.map((r) => (
+                  <tr key={r.id}>
+                    <td>{r.item_name}</td><td>{r.store_name}</td><td>{r.city}</td>
+                    <td className="num">₱{r.price.toFixed(2)}</td>
+                    <td><span className={`health ${r.status === "visible" ? "good" : "bad"}`}>{r.status === "visible" ? "● Visible" : "▲ Held for review"}</span></td>
+                    <td className="row-actions">
+                      {r.status !== "visible" && <button className="mini" onClick={() => act(() => postJson(`/admin/shelf-prices/${r.id}/approve`, {}, true), "Price approved.")}>Approve</button>}
+                      <button className="mini" onClick={() => act(() => send(`/admin/shelf-prices/${r.id}`, "DELETE"), "Price removed.")}>Remove</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
 
       <div className="two-col">

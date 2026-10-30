@@ -10,6 +10,7 @@ export interface Purchase {
   id: string;
   name: string;
   date: string; // YYYY-MM-DD
+  time?: string; // HH:MM
   total: number;
   budget: number | null;
   lines: PurchaseLine[];

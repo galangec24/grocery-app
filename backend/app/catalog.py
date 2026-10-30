@@ -1,8 +1,9 @@
-"""Popular Philippine grocery products, so any brand can be found and added to a list.
+"""The product catalog, stored in the database.
 
-This catalog holds names and sizes only, never prices. Government lists cover a limited
-set of goods, and an invented price would be worse than none. Shoppers enter the shelf
-price themselves until a retailer connects its data.
+Most products arrive from the open product databases (see sources/open_data.py).
+Administrators can add more, for example when a mall partners with the app. The list
+below only seeds popular local items that those databases may be missing. The catalog
+holds names and sizes, never invented prices.
 """
 import re
 
@@ -12,20 +13,20 @@ _PRODUCTS = {
     "Junk Food": {
         "aliases": "chips snacks chichirya",
         "items": [
-            ("Jack 'n Jill", "Piatos Cheese", "85g"), ("Jack 'n Jill", "Piatos Sour Cream & Onion", "85g"),
-            ("Jack 'n Jill", "Piatos Roadhouse Barbecue", "85g"), ("Jack 'n Jill", "Nova Country Cheddar", "78g"),
-            ("Jack 'n Jill", "Nova Homestyle BBQ", "78g"), ("Jack 'n Jill", "Chippy Barbecue", "110g"),
-            ("Jack 'n Jill", "Chippy Chili & Cheese", "110g"), ("Jack 'n Jill", "Mr. Chips Nacho Cheese", "100g"),
-            ("Jack 'n Jill", "V-Cut Barbecue", "60g"), ("Jack 'n Jill", "Roller Coaster Cheddar", "85g"),
-            ("Jack 'n Jill", "Taquitos Chili", "85g"), ("Oishi", "Prawn Crackers", "60g"),
-            ("Oishi", "Pillows Chocolate", "150g"), ("Oishi", "Pillows Ube", "150g"),
-            ("Oishi", "Marty's Cracklin' Vegetarian Chicharon", "90g"), ("Oishi", "Ridges Cheddar", "85g"),
-            ("Oishi", "Kirei Yummy Flakes", "65g"), ("Oishi", "Crispy Patata", "60g"),
-            ("Leslie's", "Clover Chips Cheese", "85g"), ("Leslie's", "Clover Chips Barbecue", "85g"),
-            ("Leslie's", "Cheezy Corn Crunch", "70g"), ("Leslie's", "Chiz Curls", "55g"),
-            ("Regent", "Cheese Ring", "60g"), ("Regent", "Tortillos Barbecue", "100g"),
-            ("Pringles", "Sour Cream & Onion", "110g"), ("Lay's", "Classic", "65g"), ("Doritos", "Nacho Cheese", "60g"),
-            ("Nagaraya", "Cracker Nuts Original", "160g"), ("Boy Bawang", "Cornick Garlic", "100g"),
+            ("Jack 'n Jill", "Piatos Cheese", "40g/85g"), ("Jack 'n Jill", "Piatos Sour Cream & Onion", "40g/85g"),
+            ("Jack 'n Jill", "Piatos Roadhouse Barbecue", "40g/85g"), ("Jack 'n Jill", "Nova Country Cheddar", "40g/78g"),
+            ("Jack 'n Jill", "Nova Homestyle BBQ", "40g/78g"), ("Jack 'n Jill", "Chippy Barbecue", "27g/110g"),
+            ("Jack 'n Jill", "Chippy Chili & Cheese", "27g/110g"), ("Jack 'n Jill", "Mr. Chips Nacho Cheese", "25g/100g"),
+            ("Jack 'n Jill", "V-Cut Barbecue", "25g/60g"), ("Jack 'n Jill", "Roller Coaster Cheddar", "30g/85g"),
+            ("Jack 'n Jill", "Taquitos Chili", "25g/85g"), ("Oishi", "Prawn Crackers", "25g/60g"),
+            ("Oishi", "Pillows Chocolate", "38g/150g"), ("Oishi", "Pillows Ube", "38g/150g"),
+            ("Oishi", "Marty's Cracklin' Vegetarian Chicharon", "27g/90g"), ("Oishi", "Ridges Cheddar", "25g/85g"),
+            ("Oishi", "Kirei Yummy Flakes", "24g/65g"), ("Oishi", "Crispy Patata", "22g/60g"),
+            ("Leslie's", "Clover Chips Cheese", "30g/85g"), ("Leslie's", "Clover Chips Barbecue", "30g/85g"),
+            ("Leslie's", "Cheezy Corn Crunch", "30g/70g"), ("Leslie's", "Chiz Curls", "28g/55g"),
+            ("Regent", "Cheese Ring", "30g/60g"), ("Regent", "Tortillos Barbecue", "30g/100g"),
+            ("Pringles", "Sour Cream & Onion", "42g/110g"), ("Lay's", "Classic", "25g/65g"), ("Doritos", "Nacho Cheese", "30g/60g"),
+            ("Nagaraya", "Cracker Nuts Original", "40g/160g"), ("Boy Bawang", "Cornick Garlic", "30g/100g"),
         ],
     },
     "Canned Sardines": {
@@ -150,35 +151,66 @@ _PRODUCTS = {
 }
 
 
+VARIANTS = {2: ["Small", "Large"], 3: ["Small", "Medium", "Large"]}
+
+
 def _build() -> list[dict]:
     items = []
     for category, group in _PRODUCTS.items():
-        for brand, product, size in group["items"]:
-            name = f"{brand} {product}"
-            items.append({
-                "id": f"catalog:{re.sub(r'[^a-z0-9]+', '-', f'{name} {size}'.lower()).strip('-')}",
-                "name": name, "brand": brand, "category": category, "size": size,
-                "keywords": f"{name} {size} {category} {group['aliases']}".lower(),
-            })
+        for brand, product, sizes in group["items"]:
+            options = sizes.split("/")
+            for index, size in enumerate(options):
+                name = f"{brand} {product}"
+                variant = VARIANTS[len(options)][index] if len(options) > 1 else ""
+                items.append({
+                    "id": f"catalog:{re.sub(r'[^a-z0-9]+', '-', f'{name} {size}'.lower()).strip('-')}",
+                    "name": name, "brand": brand, "category": category, "size": size, "variant": variant,
+                    "keywords": f"{name} {size} {variant} {category} {group['aliases']}".lower(),
+                })
     return items
 
 
-CATALOG = _build()
+STARTER = _build()
+
+
+def seed(db) -> None:
+    """Adds starter items once. Anything an administrator removed stays removed."""
+    if db.catalog_items.find_one({"source": "starter"}):
+        return
+    for item in STARTER:
+        db.catalog_items.replace_one(
+            {"_id": item["id"]},
+            {"_id": item["id"], **{k: v for k, v in item.items() if k != "id"}, "source": "starter", "status": "active"},
+            upsert=True,
+        )
+
+
+def _public(doc: dict) -> dict:
+    return {
+        "id": doc["_id"], "name": doc["name"], "brand": doc["brand"], "category": doc["category"],
+        "size": doc["size"], "variant": doc.get("variant", ""), "barcode": doc.get("barcode"),
+        "image_url": doc.get("image_url"), "source": doc.get("source"), "keywords": doc["keywords"],
+    }
+
+
+def _criteria(query: str) -> dict:
+    # Tokens are lowercase letters and digits, escaped so they can't act as patterns.
+    clauses = [{"status": "active"}]
+    for token in cmp.tokenize(query):
+        word = re.escape(token[:-1] if token.endswith("s") and len(token) > 3 else token)
+        clauses.append({"keywords": {"$regex": word}})
+    return {"$and": clauses}
+
+
+def find(db, query: str, limit: int = 50, offset: int = 0) -> list[dict]:
+    rows = db.catalog_items.find(_criteria(query)).sort("name", 1).skip(offset).limit(limit)
+    return [_public(doc) for doc in rows]
+
+
+def count(db, query: str) -> int:
+    return db.catalog_items.count_documents(_criteria(query))
 
 
 def custom_items(db) -> list[dict]:
-    """Products administrators added, shaped like the built-in catalog."""
-    return [
-        {"id": d["_id"], "name": d["name"], "brand": d["brand"], "category": d["category"], "size": d["size"],
-         "keywords": f'{d["name"]} {d["size"]} {d["category"]}'.lower()}
-        for d in db.catalog_items.find().sort("name", 1)
-    ]
-
-
-def full(db) -> list[dict]:
-    return CATALOG + custom_items(db)
-
-
-def search(query: str, items: list[dict] | None = None) -> list[dict]:
-    tokens = cmp.tokenize(query)
-    return [item for item in (items or CATALOG) if tokens and cmp.matches(tokens, item["keywords"])]
+    """Products administrators added."""
+    return [_public(d) for d in db.catalog_items.find({"source": "admin", "status": "active"}).sort("name", 1)]

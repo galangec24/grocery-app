@@ -1,10 +1,10 @@
 """Public and shopper endpoints (spec section 9.1)."""
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, Field, field_validator, model_validator
 from pymongo.database import Database
 
 from . import comparison as cmp
-from . import catalog, location, market
+from . import catalog, community, location, market
 from .config import LOGIN_RATE_PER_MINUTE, MAX_MULTI_SEARCH_ITEMS, NEARBY_RADIUS_KM, SEARCH_RATE_PER_MINUTE
 from .db import get_db, utcnow
 from .security import RateLimiter, current_user, issue_token, read_token, verify_password
@@ -12,6 +12,7 @@ from .security import RateLimiter, current_user, issue_token, read_token, verify
 router = APIRouter(prefix="/api/v1")
 limit_search = RateLimiter(SEARCH_RATE_PER_MINUTE)
 limit_login = RateLimiter(LOGIN_RATE_PER_MINUTE)
+limit_report = RateLimiter(30)
 
 Latitude = Query(None, ge=-90, le=90)
 Longitude = Query(None, ge=-180, le=180)
@@ -78,10 +79,25 @@ def market_prices(
     return {"count": len(rows), "results": rows, "generated_at": cmp.iso(utcnow())}
 
 
-@router.get("/market/catalog")
-def market_catalog(db: Database = Depends(get_db)):
-    """Brand names and sizes for search. Holds no prices."""
-    return [{k: item[k] for k in ("id", "name", "brand", "category", "size", "keywords")} for item in catalog.full(db)]
+@router.get("/market/catalog", dependencies=[Depends(limit_search)])
+def market_catalog(
+    response: Response,
+    q: str = Query("", max_length=120),
+    limit: int = Query(500, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    db: Database = Depends(get_db),
+):
+    """Every product we know of. Names and sizes only; see the prices endpoint below."""
+    response.headers["X-Total-Count"] = str(catalog.count(db, q))
+    return catalog.find(db, q, limit, offset)
+
+
+@router.get("/market/catalog/{item_id}/prices", dependencies=[Depends(limit_search)])
+def catalog_prices(item_id: str, db: Database = Depends(get_db)):
+    item = db.catalog_items.find_one({"_id": item_id})
+    if item is None:
+        raise HTTPException(404, "Product not found")
+    return {"points": community.history(db, item.get("barcode"), f'{item["name"]} {item["size"]}')}
 
 
 class BasketItem(BaseModel):
@@ -101,11 +117,51 @@ class BasketItem(BaseModel):
 class BasketRequest(BaseModel):
     items: list[BasketItem] = Field(min_length=1, max_length=MAX_MULTI_SEARCH_ITEMS)
     island: str | None = Field(None, pattern="^(Luzon|Visayas|Mindanao)$")
+    city: str | None = Field(None, max_length=80)
 
 
 @router.post("/market/basket", dependencies=[Depends(limit_search)])
 def market_basket(body: BasketRequest, db: Database = Depends(get_db)):
-    return market.basket(market.price_rows(db, None, body.island), [i.model_dump() for i in body.items], catalog.full(db))
+    return market.basket(
+        market.price_rows(db, None, body.island), [i.model_dump() for i in body.items],
+        lambda query: catalog.find(db, query, 1), community.current(db, body.city),
+    )
+
+
+class ShelfPrice(BaseModel):
+    name: str = Field(min_length=2, max_length=160)
+    store_name: str = Field(min_length=2, max_length=120)
+    latitude: float = Field(ge=4, le=22)  # Philippine latitudes.
+    longitude: float = Field(ge=116, le=127.5)
+    city: str = Field(min_length=2, max_length=80)
+    price: float = Field(gt=0, le=999999)
+
+
+@router.post("/market/shelf-prices", status_code=201, dependencies=[Depends(limit_report)])
+def report_shelf_price(body: ShelfPrice, db: Database = Depends(get_db)):
+    doc = community.add_report(db, body.name, body.store_name, body.latitude, body.longitude, body.city, body.price)
+    return {"accepted": True, "held_for_review": doc["status"] == "flagged"}
+
+
+class BestStoreRequest(BaseModel):
+    items: list[str] = Field(min_length=1, max_length=MAX_MULTI_SEARCH_ITEMS)
+    city: str | None = Field(None, max_length=80)
+    latitude: float | None = Field(None, ge=-90, le=90)
+    longitude: float | None = Field(None, ge=-180, le=180)
+
+
+@router.post("/market/best-stores", dependencies=[Depends(limit_search)])
+def best_stores(body: BestStoreRequest, db: Database = Depends(get_db)):
+    need_both(body.latitude, body.longitude)
+    return community.best_stores(db, body.items, body.city, body.latitude, body.longitude)
+
+
+@router.get("/location/route", dependencies=[Depends(limit_search)])
+def location_route(
+    from_lat: float = Query(ge=-90, le=90), from_lon: float = Query(ge=-180, le=180),
+    to_lat: float = Query(ge=-90, le=90), to_lon: float = Query(ge=-180, le=180),
+):
+    return location.route((from_lat, from_lon), (to_lat, to_lon))
 
 
 @router.get("/location/resolve", dependencies=[Depends(limit_search)])

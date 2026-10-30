@@ -2,14 +2,15 @@
 
 Expected values below were read directly from the published documents in tests/fixtures.
 """
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 import pytest
 
 from app import market
 from app.bootstrap import ensure_admin, purge_sample_data
-from app.sources import da_dpi, dti_srp
+from app.db import utcnow
+from app.sources import da_dpi, dti_srp, open_data
 from sample_data import seed
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -257,3 +258,180 @@ def test_admin_created_once(client, db, monkeypatch):
     ensure_admin(db)
     ensure_admin(db)
     assert db.users.count_documents({"email": "owner@example.com"}) == 1
+
+
+def shelf(client, name="Leslie's Cheezy Corn Crunch 70g", store="SM Hypermarket", price=33.5, lat=10.31, lon=123.89):
+    body = dict(name=name, store_name=store, latitude=lat, longitude=lon, city="Cebu City", price=price)
+    return client.post("/api/v1/market/shelf-prices", json=body)
+
+
+def test_snacks_have_small_and_large_sizes(client):
+    items = [i for i in client.get("/api/v1/market/catalog").json() if "Cheezy Corn Crunch" in i["name"]]
+    assert {i["variant"] for i in items} == {"Small", "Large"} and {i["size"] for i in items} == {"30g", "70g"}
+
+
+def test_reported_price_replaces_no_price(client):
+    assert shelf(client).status_code == 201
+    body = {"items": [{"query": "Cheezy Corn Crunch 70g", "quantity": 2}], "city": "Cebu City"}
+    line = client.post("/api/v1/market/basket", json=body).json()["lines"][0]
+    assert line["status"] == "reported" and line["line_total"] == 67.0
+    assert line["report"]["store_name"] == "SM Hypermarket"
+
+
+def test_reports_stay_in_their_city(client):
+    shelf(client)
+    body = {"items": [{"query": "Cheezy Corn Crunch 70g"}], "city": "Davao City"}
+    assert client.post("/api/v1/market/basket", json=body).json()["lines"][0]["status"] == "needs_price"
+
+
+def test_official_price_wins_over_a_report(loaded, client):
+    shelf(client, name="Bear Brand", price=1)
+    line = client.post("/api/v1/market/basket", json={"items": [{"query": "Bear Brand"}]}).json()["lines"][0]
+    assert line["status"] == "matched" and line["unit_price"] == 50
+
+
+def test_newest_report_per_store_counts(client):
+    shelf(client, price=40)
+    shelf(client, price=35)
+    data = client.post("/api/v1/market/best-stores", json={"items": ["Cheezy Corn Crunch 70g"]}).json()
+    assert data["best"]["total"] == 35
+
+
+def test_cheapest_store_for_the_list_is_ranked_first(client):
+    for store, chips, soda, lat in (("SM Market", 30, 80, 10.31), ("Robinsons", 34, 70, 10.32), ("Corner Store", 20, 0, 10.33)):
+        shelf(client, name="Piatos Cheese 85g", store=store, price=chips, lat=lat)
+        if soda:
+            shelf(client, name="Coca-Cola Regular 1.5L", store=store, price=soda, lat=lat)
+    body = {"items": ["piatos", "coca-cola"], "latitude": 10.3157, "longitude": 123.8854, "city": "Cebu City"}
+    data = client.post("/api/v1/market/best-stores", json=body).json()
+    assert data["best"]["store_name"] == "Robinsons" and data["best"]["total"] == 104
+    assert data["best"]["items_found"] == 2 and data["best"]["distance_km"] is not None
+    assert data["items_priced"] == 2
+
+
+def test_no_reports_means_no_store_is_named(client):
+    data = client.post("/api/v1/market/best-stores", json={"items": ["piatos"]}).json()
+    assert data["best"] is None and data["items_priced"] == 0
+
+
+def test_outlier_is_held_for_review_and_can_be_approved(client, admin):
+    for index, store in enumerate(("A Mart", "B Mart", "C Mart")):
+        shelf(client, store=store, price=30 + index)
+    response = shelf(client, store="D Mart", price=500).json()
+    assert response["held_for_review"] is True
+    best = client.post("/api/v1/market/best-stores", json={"items": ["Cheezy 70g"]}).json()
+    assert "D Mart" not in {s["store_name"] for s in best["stores"]}
+    held = next(r for r in client.get("/api/v1/admin/shelf-prices", headers=admin).json() if r["status"] == "flagged")
+    assert client.post(f"/api/v1/admin/shelf-prices/{held['id']}/approve", headers=admin).status_code == 200
+    best = client.post("/api/v1/market/best-stores", json={"items": ["Cheezy 70g"]}).json()
+    assert "D Mart" in {s["store_name"] for s in best["stores"]}
+
+
+def test_admin_can_remove_a_report(client, admin, supervisor):
+    shelf(client)
+    report = client.get("/api/v1/admin/shelf-prices", headers=admin).json()[0]
+    assert client.delete(f"/api/v1/admin/shelf-prices/{report['id']}", headers=supervisor).status_code == 403
+    assert client.delete(f"/api/v1/admin/shelf-prices/{report['id']}", headers=admin).status_code == 200
+    assert client.get("/api/v1/admin/shelf-prices", headers=admin).json() == []
+
+
+def test_old_reports_expire(client, db):
+    shelf(client)
+    db.shelf_reports.update_many({}, {"$set": {"created_at": datetime(2026, 1, 1)}})
+    assert client.post("/api/v1/market/best-stores", json={"items": ["Cheezy"]}).json()["best"] is None
+
+
+@pytest.mark.parametrize("change", [{"price": 0}, {"price": -5}, {"latitude": 1.3}, {"store_name": "x"}])
+def test_bad_shelf_prices_are_refused(client, change):
+    body = dict(name="Piatos", store_name="SM", latitude=10.3, longitude=123.9, city="Cebu City", price=30)
+    assert client.post("/api/v1/market/shelf-prices", json={**body, **change}).status_code == 422
+
+
+FOOD = {"code": "4800016", "product_name": "Cheezy Corn Crunch", "brands": "Leslie's,Other", "quantity": "70 g",
+        "categories_tags": ["en:snacks", "en:corn-snacks"], "image_small_url": "https://img/x.jpg"}
+PRICE = {"id": 9, "product_code": "4800016", "price": 33.5, "date": "2026-10-01", "price_is_discounted": False, "price_per": None,
+         "product": {"product_name": "Cheezy Corn Crunch", "brands": "Leslie's", "quantity": "70 g"},
+         "location": {"osm_name": "SM Hypermarket", "osm_lat": 10.31, "osm_lon": 123.89, "osm_address_city": "Cebu City"}}
+
+
+class Page:
+    def __init__(self, body, code=200):
+        self.body, self.status_code = body, code
+
+    def raise_for_status(self):
+        pass
+
+    def json(self):
+        return self.body
+
+
+class Http:
+    def __init__(self, *pages):
+        self.pages = list(pages)
+        self.params = []
+
+    def get(self, url, params=None):
+        self.params.append(params)
+        return self.pages.pop(0)
+
+
+def test_open_data_product_is_cleaned_up():
+    doc = open_data.product_doc(FOOD, "food")
+    assert doc["_id"] == "off:4800016" and doc["name"] == "Leslie's Cheezy Corn Crunch"
+    assert doc["size"] == "70 g" and doc["category"] == "Corn Snacks" and doc["barcode"] == "4800016"
+
+
+@pytest.mark.parametrize("bad", [{"code": "", "product_name": "x y"}, {"code": "1", "product_name": ""}, {"code": "1", "product_name": None}])
+def test_unusable_products_are_skipped(bad):
+    assert open_data.product_doc(bad, "food") is None
+
+
+def test_products_sync_in_pages_and_become_searchable(client, db):
+    full = {"products": [{**FOOD, "code": str(n)} for n in range(100)]}
+    http = Http(Page(full), Page({"products": [FOOD]}))
+    assert open_data.sync_product_page(db, http, "food") is True
+    assert open_data.sync_product_page(db, http, "food") is False
+    assert [p["page"] for p in http.params] == [1, 2]
+    found = client.get("/api/v1/market/catalog", params={"q": "cheezy 70"})
+    assert int(found.headers["X-Total-Count"]) >= 1 and any(i["barcode"] == "4800016" for i in found.json())
+
+
+def test_a_busy_service_keeps_our_place(client, db):
+    db.sync_state.insert_one({"_id": "food", "page": 7, "finished_at": None})
+    assert open_data.sync_product_page(db, Http(Page({}, 503)), "food") is False
+    assert db.sync_state.find_one({"_id": "food"})["page"] == 7
+
+
+def test_finished_site_rests_until_refresh(client, db):
+    db.sync_state.insert_one({"_id": "food", "page": 1, "finished_at": utcnow()})
+    http = Http()
+    assert open_data.sync_product_page(db, http, "food") is False and http.params == []
+
+
+def test_removed_product_stays_removed_after_sync(client, db, admin):
+    open_data.sync_product_page(db, Http(Page({"products": [FOOD]})), "food")
+    assert client.delete("/api/v1/admin/catalog/off:4800016", headers=admin).status_code == 200
+    db.sync_state.delete_many({})
+    open_data.sync_product_page(db, Http(Page({"products": [FOOD]})), "food")
+    assert client.get("/api/v1/market/catalog", params={"q": "4800016"}).json() == []
+
+
+def test_open_price_reaches_receipt_chart_and_cheapest_store(client, db):
+    open_data.sync_product_page(db, Http(Page({"products": [FOOD]})), "food")
+    assert open_data.sync_prices(db, Http(Page({"items": [PRICE], "pages": 1}))) == 1
+    body = {"items": [{"query": "cheezy corn crunch 70", "quantity": 2}], "city": "Cebu City"}
+    line = client.post("/api/v1/market/basket", json=body).json()["lines"][0]
+    assert line["status"] == "reported" and line["line_total"] == 67 and line["report"]["origin"] == "Open Prices"
+    best = client.post("/api/v1/market/best-stores", json={"items": ["cheezy corn crunch"]}).json()["best"]
+    assert best["store_name"] == "SM Hypermarket"
+    points = client.get("/api/v1/market/catalog/off:4800016/prices").json()["points"]
+    assert [p["price"] for p in points] == [33.5] and points[0]["store"] == "SM Hypermarket"
+
+
+@pytest.mark.parametrize("change", [{"price_is_discounted": True}, {"price_per": "KILOGRAM"}, {"location": {}}, {"price": 0}])
+def test_only_standard_located_prices_are_kept(change):
+    assert open_data.price_doc({**PRICE, **change}) is None
+
+
+def test_regex_characters_in_search_are_harmless(client):
+    assert client.get("/api/v1/market/catalog", params={"q": "(.*)+["}).status_code == 200

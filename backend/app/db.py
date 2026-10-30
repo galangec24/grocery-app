@@ -47,6 +47,9 @@ def ensure_indexes(db: Database) -> None:
     db.audit_logs.create_index("created_at")
     db.market_prices.create_index([("source", ASCENDING), ("report_date", ASCENDING)])
     db.market_prices.create_index("key")
+    db.catalog_items.create_index([("source", ASCENDING), ("status", ASCENDING)])
+    db.open_prices.create_index("barcode")
+    db.shelf_reports.create_index([("city", ASCENDING), ("created_at", ASCENDING)])
 
 
 def supports_transactions() -> bool:

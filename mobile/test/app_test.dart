@@ -29,12 +29,14 @@ Map<String, dynamic> row(String id, String commodity, double price, String kind)
       'trend': [price],
     };
 
+var catalogEmpty = false;
+
 AppState fakeState() => AppState(
       api: Api(
         client: MockClient((request) async {
           if (request.url.path.endsWith('/market/catalog')) {
             return http.Response(
-              jsonEncode([
+              jsonEncode(catalogEmpty ? [] : [
                 {'id': 'c1', 'name': 'Jack n Jill Piatos Cheese', 'category': 'Junk Food', 'size': '85g', 'keywords': 'jack n jill piatos cheese 85g junk food chips'},
               ]),
               200,
@@ -221,6 +223,7 @@ void main() {
   });
 
   testWidgets('prices show and live search filters them', (tester) async {
+    catalogEmpty = false;
     tester.view.physicalSize = const Size(1000, 2400);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -234,11 +237,15 @@ void main() {
     expect(find.text('₱50.00'), findsWidgets);
 
     await tester.enterText(find.byType(TextField).last, 'piatos');
+    await tester.pump(const Duration(milliseconds: 300));
     await tester.pumpAndSettle();
     expect(find.text('Found in stores'), findsOneWidget);
     expect(find.textContaining('Piatos Cheese'), findsOneWidget);
 
+    tester.binding.scheduleFrame();
+    catalogEmpty = true;
     await tester.enterText(find.byType(TextField).last, 'unicorn');
+    await tester.pump(const Duration(milliseconds: 300));
     await tester.pumpAndSettle();
     expect(find.textContaining('Nothing matches'), findsOneWidget);
   });

@@ -83,6 +83,16 @@ def test_basket_totals_real_prices():
     assert data["total"] == round(sum(l["line_total"] for l in data["lines"]), 2)
 
 
+def test_snacks_have_two_sizes():
+    sizes = {item["variant"] for item in get("/market/catalog") if "Piatos Cheese" in item["name"]}
+    assert sizes == {"Small", "Large"}
+
+
+def test_road_route_between_two_cebu_points():
+    route = get("/location/route", from_lat=10.3157, from_lon=123.8854, to_lat=10.3439, to_lon=123.9118)
+    assert len(route["path"]) >= 2 and route["distance_km"] > 0
+
+
 def test_brand_catalog_finds_piatos_and_mega():
     names = " ".join(item["name"] for item in get("/market/catalog"))
     assert "Piatos" in names and "Mega Sardines" in names

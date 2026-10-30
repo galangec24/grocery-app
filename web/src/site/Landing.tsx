@@ -60,7 +60,7 @@ export function Landing() {
       </section>
 
       <footer className="site-footer">
-        <p>Data: Department of Trade and Industry, Department of Agriculture. Store locations © OpenStreetMap contributors. Not affiliated with any government agency.</p>
+        <p>Data: Department of Trade and Industry, Department of Agriculture, Open Food Facts and Open Prices (ODbL). Maps © OpenStreetMap contributors. Not affiliated with any government agency.</p>
       </footer>
     </div>
   );

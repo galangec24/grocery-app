@@ -95,13 +95,43 @@ class CatalogItem {
         name = json['name'] as String,
         category = json['category'] as String,
         size = json['size'] as String,
+        variant = (json['variant'] as String?) ?? '',
         keywords = json['keywords'] as String;
 
   final String id;
   final String name;
   final String category;
   final String size;
+  final String variant;
   final String keywords;
+}
+
+class StoreOffer {
+  StoreOffer.fromJson(Map<String, dynamic> json)
+      : storeName = json['store_name'] as String,
+        latitude = (json['latitude'] as num).toDouble(),
+        longitude = (json['longitude'] as num).toDouble(),
+        total = (json['total'] as num).toDouble(),
+        itemsFound = json['items_found'] as int;
+
+  final String storeName;
+  final double latitude;
+  final double longitude;
+  final double total;
+  final int itemsFound;
+}
+
+class RouteInfo {
+  RouteInfo.fromJson(Map<String, dynamic> json)
+      : path = (json['path'] as List).map((p) => (p as List).map((v) => (v as num).toDouble()).toList()).toList(),
+        distanceKm = (json['distance_km'] as num).toDouble(),
+        durationMin = json['duration_min'] as int?,
+        road = json['road'] as bool;
+
+  final List<List<double>> path;
+  final double distanceKm;
+  final int? durationMin;
+  final bool road;
 }
 
 class BasketLine {
@@ -110,6 +140,7 @@ class BasketLine {
         quantity = json['quantity'] as int,
         status = json['status'] as String,
         label = json['label'] as String,
+        reportedStore = (json['report'] as Map<String, dynamic>?)?['store_name'] as String?,
         unitPrice = (json['unit_price'] as num).toDouble(),
         lineTotal = (json['line_total'] as num).toDouble(),
         selected = json['selected'] == null
@@ -123,6 +154,7 @@ class BasketLine {
   final int quantity;
   final String status;
   final String label;
+  final String? reportedStore;
   final double unitPrice;
   final double lineTotal;
   final PriceRow? selected;
@@ -190,8 +222,8 @@ class Api {
         .toList();
   }
 
-  Future<List<CatalogItem>> catalog() async {
-    final data = await _send(() => _client.get(_uri('/market/catalog')));
+  Future<List<CatalogItem>> catalog(String query) async {
+    final data = await _send(() => _client.get(_uri('/market/catalog', {'q': query, 'limit': '24'})));
     return (data as List).map((c) => CatalogItem.fromJson(c as Map<String, dynamic>)).toList();
   }
 
@@ -207,11 +239,52 @@ class Api {
     return CityInfo.fromJson(data as Map<String, dynamic>);
   }
 
-  Future<Basket> basket(List<Map<String, dynamic>> items, {String? island}) async {
+  Future<StoreOffer?> bestStore(List<String> items, String? city, double? latitude, double? longitude) async {
+    final data = await _send(() => _client.post(
+          _uri('/market/best-stores'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'items': items, 'city': city, 'latitude': latitude, 'longitude': longitude}),
+        ));
+    final best = data['best'];
+    return best == null ? null : StoreOffer.fromJson(best as Map<String, dynamic>);
+  }
+
+  Future<RouteInfo> route(double fromLat, double fromLon, double toLat, double toLon) async {
+    final data = await _send(() => _client.get(_uri('/location/route', {
+          'from_lat': '$fromLat',
+          'from_lon': '$fromLon',
+          'to_lat': '$toLat',
+          'to_lon': '$toLon',
+        })));
+    return RouteInfo.fromJson(data as Map<String, dynamic>);
+  }
+
+  Future<bool> shareShelfPrice({
+    required String name,
+    required CityStore store,
+    required String city,
+    required double price,
+  }) async {
+    final data = await _send(() => _client.post(
+          _uri('/market/shelf-prices'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'name': name,
+            'store_name': store.name,
+            'latitude': store.latitude,
+            'longitude': store.longitude,
+            'city': city,
+            'price': price,
+          }),
+        ));
+    return data['held_for_review'] as bool;
+  }
+
+  Future<Basket> basket(List<Map<String, dynamic>> items, {String? island, String? city}) async {
     final data = await _send(() => _client.post(
           _uri('/market/basket'),
           headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({'items': items, 'island': island}),
+          body: jsonEncode({'items': items, 'island': island, 'city': city}),
         ));
     return Basket.fromJson(data as Map<String, dynamic>);
   }

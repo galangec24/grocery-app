@@ -6,7 +6,8 @@ from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPExcepti
 from pydantic import BaseModel, Field, field_validator
 from pymongo.database import Database
 
-from . import catalog, market
+from . import catalog, community, market
+from .sources import open_data
 from . import comparison as cmp
 from .config import MAX_CSV_BYTES
 from .db import get_db, new_id, utcnow
@@ -226,6 +227,33 @@ def list_organizations(user: dict = Depends(require_system_admin), db: Database 
     ]
 
 
+@router.get("/shelf-prices")
+def shelf_prices(user: dict = Depends(require_system_admin), db: Database = Depends(get_db)):
+    rows = db.shelf_reports.find().sort("created_at", -1).limit(60)
+    return [
+        {"id": r["_id"], "status": r["status"], **community.report_json(r)}
+        for r in rows
+    ]
+
+
+@router.delete("/shelf-prices/{report_id}")
+def delete_shelf_price(report_id: str, user: dict = Depends(require_system_admin), db: Database = Depends(get_db)):
+    report = db.shelf_reports.find_one({"_id": report_id})
+    if report is None:
+        raise HTTPException(404, "Report not found")
+    db.shelf_reports.delete_one({"_id": report_id})
+    audit(db, user, "shelf_price.removed", None, f'{report["item_name"]} at {report["store_name"]}')
+    return {"deleted": True}
+
+
+@router.post("/shelf-prices/{report_id}/approve")
+def approve_shelf_price(report_id: str, user: dict = Depends(require_system_admin), db: Database = Depends(get_db)):
+    if db.shelf_reports.update_one({"_id": report_id}, {"$set": {"status": "visible"}}).matched_count == 0:
+        raise HTTPException(404, "Report not found")
+    audit(db, user, "shelf_price.approved", None, report_id)
+    return {"approved": True}
+
+
 class CatalogCreate(BaseModel):
     name: str = Field(min_length=2, max_length=160)
     brand: str = Field(min_length=1, max_length=80)
@@ -240,7 +268,10 @@ def admin_catalog(user: dict = Depends(require_system_admin), db: Database = Dep
 
 @router.post("/catalog", status_code=201)
 def add_catalog_item(body: CatalogCreate, user: dict = Depends(require_system_admin), db: Database = Depends(get_db)):
-    doc = {"_id": f"custom:{new_id()}", **body.model_dump(), "created_at": utcnow()}
+    doc = {
+        "_id": f"custom:{new_id()}", **body.model_dump(), "variant": "", "source": "admin", "status": "active",
+        "keywords": f"{body.brand} {body.name} {body.size} {body.category}".lower(), "created_at": utcnow(),
+    }
     db.catalog_items.insert_one(doc)
     audit(db, user, "catalog.added", None, f'{doc["name"]} {doc["size"]}')
     return {"id": doc["_id"]}
@@ -251,9 +282,14 @@ def delete_catalog_item(item_id: str, user: dict = Depends(require_system_admin)
     doc = db.catalog_items.find_one({"_id": item_id})
     if doc is None:
         raise HTTPException(404, "Catalog item not found")
-    db.catalog_items.delete_one({"_id": item_id})
+    db.catalog_items.update_one({"_id": item_id}, {"$set": {"status": "hidden"}})
     audit(db, user, "catalog.removed", None, doc["name"])
     return {"deleted": True}
+
+
+@router.get("/data-sources")
+def data_sources(user: dict = Depends(require_system_admin), db: Database = Depends(get_db)):
+    return open_data.status(db)
 
 
 @router.post("/market/refresh", status_code=202)

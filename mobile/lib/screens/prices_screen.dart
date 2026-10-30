@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -18,6 +20,7 @@ class _PricesScreenState extends State<PricesScreen> {
   final _cityField = TextEditingController();
   List<PriceRow>? _rows;
   List<CatalogItem> _catalog = const [];
+  Timer? _catalogTimer;
   String? _error;
   String? _loadedIsland;
   bool _loaded = false;
@@ -36,6 +39,7 @@ class _PricesScreenState extends State<PricesScreen> {
 
   @override
   void dispose() {
+    _catalogTimer?.cancel();
     _search.dispose();
     _cityField.dispose();
     super.dispose();
@@ -47,8 +51,6 @@ class _PricesScreenState extends State<PricesScreen> {
     try {
       final rows = await state.api.prices(island: state.city?.island);
       if (mounted) setState(() => _rows = rows);
-      final catalog = await state.api.catalog();
-      if (mounted) setState(() => _catalog = catalog);
     } on ApiException catch (error) {
       if (mounted) setState(() => _error = error.message);
     }
@@ -65,13 +67,21 @@ class _PricesScreenState extends State<PricesScreen> {
     }).toList();
   }
 
-  List<CatalogItem> get _brands {
-    final words = _search.text.toLowerCase().split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
-    if (words.isEmpty) return const [];
-    return _catalog.where((item) {
-      return words.every((w) =>
-          item.keywords.contains(w) || (w.endsWith('s') && item.keywords.contains(w.substring(0, w.length - 1))));
-    }).take(24).toList();
+  void _searchCatalog(String text) {
+    _catalogTimer?.cancel();
+    if (text.trim().isEmpty) {
+      setState(() => _catalog = const []);
+      return;
+    }
+    _catalogTimer = Timer(const Duration(milliseconds: 250), () async {
+      final api = AppScope.of(context).api;
+      try {
+        final found = await api.catalog(text.trim());
+        if (mounted && _search.text == text) setState(() => _catalog = found);
+      } on ApiException {
+        if (mounted) setState(() => _catalog = const []);
+      }
+    });
   }
 
   Future<void> _addBrand(CatalogItem item) async {
@@ -97,7 +107,7 @@ class _PricesScreenState extends State<PricesScreen> {
   @override
   Widget build(BuildContext context) {
     final shown = _shown;
-    final brands = _brands;
+    final brands = _catalog;
     final columns = (MediaQuery.sizeOf(context).width / 420).floor().clamp(1, 3);
     return RefreshIndicator(
       onRefresh: _load,
@@ -109,7 +119,10 @@ class _PricesScreenState extends State<PricesScreen> {
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
             child: TextField(
               controller: _search,
-              onChanged: (_) => setState(() {}),
+              onChanged: (value) {
+                setState(() {});
+                _searchCatalog(value);
+              },
               decoration: const InputDecoration(
                 hintText: 'Search rice, Piatos, dog food, perfume…',
                 prefixIcon: Icon(Icons.search),
@@ -138,13 +151,13 @@ class _PricesScreenState extends State<PricesScreen> {
               padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text('Found in stores', style: Theme.of(context).textTheme.titleMedium),
-                const Text('No official price yet. Add one to your draft and enter the shelf price.'),
+                const Text('Add one to your list to see prices near you.'),
                 const SizedBox(height: 6),
                 Wrap(spacing: 8, runSpacing: 8, children: [
                   for (final item in brands)
                     ActionChip(
                       avatar: const Icon(Icons.add, size: 18),
-                      label: Text('${item.name} ${item.size}'),
+                      label: Text('${item.name} ${item.variant.isEmpty ? '' : '${item.variant} '}${item.size}'),
                       onPressed: () => _addBrand(item),
                     ),
                 ]),

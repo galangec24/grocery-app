@@ -17,6 +17,8 @@ class AppState extends ChangeNotifier {
   final DraftStore drafts;
 
   CityInfo? city;
+  double? latitude; // Held in memory only.
+  double? longitude;
   bool locating = false;
   String? locationError;
 
@@ -64,6 +66,8 @@ class AppState extends ChangeNotifier {
             'Location permission is off. Type your city instead; everything still works.');
       }
       final position = await Geolocator.getCurrentPosition();
+      latitude = position.latitude;
+      longitude = position.longitude;
       city = await api.resolveLocation(position.latitude, position.longitude);
     } on ApiException catch (error) {
       locationError = error.message;
@@ -85,6 +89,8 @@ class AppState extends ChangeNotifier {
 
   void clearCity() {
     city = null;
+    latitude = null;
+    longitude = null;
     locationError = null;
     notifyListeners();
   }

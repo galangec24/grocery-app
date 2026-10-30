@@ -3,6 +3,7 @@ import { api, CityInfo, query } from "./api";
 
 interface LocationState {
   city: CityInfo | null;
+  position: { latitude: number; longitude: number } | null;
   busy: boolean;
   error: string | null;
   locate: () => void;
@@ -15,6 +16,7 @@ export const useLocation = () => useContext(LocationContext);
 
 export function LocationProvider({ children }: { children: ReactNode }) {
   const [city, setCity] = useState<CityInfo | null>(null);
+  const [position, setPosition] = useState<LocationState["position"]>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -31,7 +33,7 @@ export function LocationProvider({ children }: { children: ReactNode }) {
       }
     };
     return {
-      city, busy, error,
+      city, position, busy, error,
       // Asked only when the shopper taps it. The browser location is used once and not kept.
       locate() {
         if (!navigator.geolocation) {
@@ -41,7 +43,10 @@ export function LocationProvider({ children }: { children: ReactNode }) {
         setBusy(true);
         setError(null);
         navigator.geolocation.getCurrentPosition(
-          ({ coords }) => resolve({ latitude: coords.latitude, longitude: coords.longitude }),
+          ({ coords }) => {
+            setPosition({ latitude: coords.latitude, longitude: coords.longitude }); // Memory only.
+            resolve({ latitude: coords.latitude, longitude: coords.longitude });
+          },
           () => {
             setBusy(false);
             setError("We couldn't get your location. Type your city and everything still works.");
@@ -50,9 +55,9 @@ export function LocationProvider({ children }: { children: ReactNode }) {
         );
       },
       chooseCity: (name) => resolve({ city: name }),
-      clear: () => { setCity(null); setError(null); },
+      clear: () => { setCity(null); setPosition(null); setError(null); },
     };
-  }, [city, busy, error]);
+  }, [city, position, busy, error]);
 
   // Finds the shopper's city on arrival. The browser still asks permission the first time.
   useEffect(() => {

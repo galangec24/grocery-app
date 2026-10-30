@@ -64,13 +64,18 @@ export interface CatalogItem {
   brand: string;
   category: string;
   size: string;
+  variant: string;
+  barcode: string | null;
+  image_url: string | null;
+  source: string;
   keywords: string;
 }
 
 export interface BasketLine {
   query: string;
   quantity: number;
-  status: "matched" | "custom" | "needs_price" | "no_match";
+  status: "matched" | "custom" | "reported" | "needs_price" | "no_match";
+  report: { store_name: string; price: number; reported_at: string; origin: string } | null;
   label: string;
   selected: PriceRow | null;
   unit_price: number;
@@ -103,6 +108,37 @@ export interface CityInfo {
   stores_available: boolean;
   stores: CityStore[];
   attribution: string;
+}
+
+export interface PricePoint {
+  date: string;
+  price: number;
+  store: string;
+  origin: string;
+}
+
+export interface StoreOffer {
+  store_name: string;
+  latitude: number;
+  longitude: number;
+  total: number;
+  items_found: number;
+  distance_km: number | null;
+  lines: { query: string; item_name: string; price: number; reported_at: string }[];
+}
+
+export interface BestStores {
+  best: StoreOffer | null;
+  stores: StoreOffer[];
+  items_total: number;
+  items_priced: number;
+}
+
+export interface Route {
+  path: number[][];
+  distance_km: number;
+  duration_min: number | null;
+  road: boolean;
 }
 
 type Tokens = { access_token: string; refresh_token: string };

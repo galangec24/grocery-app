@@ -17,7 +17,7 @@ class ReceiptCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final budget = AppScope.of(context).budget;
     final lines = basket?.lines ?? const <BasketLine>[];
-    final counted = lines.where((l) => l.status == 'matched' || l.status == 'custom').toList();
+    final counted = lines.where((l) => l.lineTotal > 0).toList();
     final waiting = lines.where((l) => l.status == 'needs_price' || l.status == 'no_match').toList();
     final total = basket?.total ?? 0;
     final left = budget == null ? null : budget - total;
@@ -55,7 +55,7 @@ class ReceiptCard extends StatelessWidget {
                   child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                     Text(line.status == 'custom' ? line.query : line.label,
                         style: _mono.copyWith(fontWeight: FontWeight.w700)),
-                    _Row('${line.quantity} x ${line.unitPrice.toStringAsFixed(2)}${line.status == 'custom' ? ' *' : ''}',
+                    _Row('${line.quantity} x ${line.unitPrice.toStringAsFixed(2)}${line.status == 'custom' ? ' *' : line.status == 'reported' ? ' †' : ''}',
                         line.lineTotal.toStringAsFixed(2)),
                   ]),
                 ),
@@ -68,7 +68,7 @@ class ReceiptCard extends StatelessWidget {
                 if (budget != null) _Row('BUDGET', peso(budget)),
                 if (left != null) _Row(left < 0 ? 'OVER BY' : 'LEFT', peso(left.abs()), alert: left < 0),
                 const _Rule(),
-                const Text('* Your own shelf price. Others are official prices and may differ at checkout.',
+                const Text('* Your shelf price. † Reported price. Others are official prices. All may differ at checkout.',
                     style: TextStyle(fontFamily: 'monospace', fontSize: 10.5, color: Color(0xFF68665C))),
               ],
             ]),
