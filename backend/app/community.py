@@ -12,6 +12,7 @@ from statistics import median
 from pymongo.database import Database
 
 from . import comparison as cmp
+from . import ingestion
 from .db import new_id, utcnow
 
 MAX_AGE_DAYS = 30
@@ -57,8 +58,9 @@ def current(db: Database, city: str | None = None) -> list[dict]:
         criteria["city"] = city
     newest: dict[tuple, dict] = {}
     rows = list(db.shelf_reports.find(criteria).sort("created_at", 1))
-    for report in sorted(open_price_reports(db, city) + rows, key=lambda r: r["created_at"]):
-        newest[(report["item_key"], report["store_name"], round(report["latitude"], 3))] = report
+    combined = open_price_reports(db, city) + ingestion.feed_reports(db, city) + rows
+    for report in sorted(combined, key=lambda r: r["created_at"]):
+        newest[(report["item_key"], report["store_name"], round(report["latitude"] or 0, 3))] = report
     return list(newest.values())
 
 
@@ -84,6 +86,8 @@ def best_stores(db: Database, queries: list[str], city: str | None, latitude, lo
     for query in queries:
         cheapest: dict[tuple, dict] = {}
         for report in matching(reports, query):
+            if report["latitude"] is None:
+                continue  # A chain or online price isn't proof of any one branch's price.
             key = (report["store_name"], round(report["latitude"], 3))
             if key not in cheapest or report["price_centavos"] < cheapest[key]["price_centavos"]:
                 cheapest[key] = report

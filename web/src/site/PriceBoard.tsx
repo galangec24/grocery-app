@@ -7,6 +7,10 @@ import { ModalSubject, PriceModal } from "./PriceModal";
 
 type SortKey = "commodity" | "price" | "change_pct";
 const PAGE_SIZE = 25;
+const AISLES: [string, string][] = [
+  ["Snacks", "snack"], ["Drinks", "beverage"], ["Pantry", "condiment"], ["Dairy & Eggs", "dairy"], ["Frozen", "frozen"],
+  ["Bread & Breakfast", "bread"], ["Household", "household"], ["Baby & Mom", "baby"], ["Pet", "pet"],
+];
 
 export function Sparkline({ values }: { values: number[] }) {
   if (values.length < 2) return <span className="muted">No history yet</span>;
@@ -206,6 +210,11 @@ export function PriceBoard({ compact }: { compact?: boolean }) {
             <option value="">All categories</option>
             {categories.map((c) => <option key={c}>{c}</option>)}
           </select>
+        </div>
+        <div className="aisles" role="group" aria-label="Browse by aisle">
+          {AISLES.map(([label, word]) => (
+            <button key={label} className={`chip${term === word ? " on" : ""}`} aria-pressed={term === word} onClick={() => setTerm(term === word ? "" : word)}>{label}</button>
+          ))}
         </div>
         {error && <p className="error" role="alert">{error}</p>}
         {!rows && !error && <p className="muted pad">Loading official prices…</p>}

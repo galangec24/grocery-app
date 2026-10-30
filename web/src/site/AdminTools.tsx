@@ -15,6 +15,23 @@ interface Retailer {
   stores: number;
 }
 
+interface PriceSource {
+  id: string;
+  name: string;
+  kind: string;
+  permission: string;
+  enabled: boolean;
+  can_run: boolean;
+  terms_url: string;
+  notes: string;
+  prices: number;
+  last_import_at: string | null;
+}
+
+const PERMISSION: Record<string, string> = {
+  open_license: "Open license", granted: "Permission granted", pending: "Waiting for permission", refused: "Refused",
+};
+
 interface ShelfReport {
   id: string;
   status: string;
@@ -47,6 +64,10 @@ export function AdminTools({ onChanged }: { onChanged: () => void }) {
   const [retailers, setRetailers] = useState<Retailer[]>([]);
   const [catalog, setCatalog] = useState<CatalogEntry[]>([]);
   const [reports, setReports] = useState<ShelfReport[]>([]);
+  const [sources, setSources] = useState<PriceSource[]>([]);
+  const [feedResult, setFeedResult] = useState<string | null>(null);
+  const [granting, setGranting] = useState<string | null>(null);
+  const [proof, setProof] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState({ email: "", full_name: "", password: "", role: "supervisor", organization_id: "" });
@@ -54,13 +75,14 @@ export function AdminTools({ onChanged }: { onChanged: () => void }) {
   const [item, setItem] = useState({ name: "", brand: "", category: "", size: "" });
 
   const load = useCallback(async () => {
-    const [u, r, c, s] = await Promise.all([
+    const [u, r, c, s, p] = await Promise.all([
       api<Account[]>("/admin/users", {}, true),
       api<Retailer[]>("/admin/organizations", {}, true),
       api<CatalogEntry[]>("/admin/catalog", {}, true),
       api<ShelfReport[]>("/admin/shelf-prices", {}, true),
+      api<PriceSource[]>("/admin/sources", {}, true),
     ]);
-    setUsers(u); setRetailers(r); setCatalog(c); setReports(s);
+    setUsers(u); setRetailers(r); setCatalog(c); setReports(s); setSources(p);
   }, []);
 
   useEffect(() => { load().catch((e) => setError(e.message)); }, [load]);
@@ -76,6 +98,18 @@ export function AdminTools({ onChanged }: { onChanged: () => void }) {
     } catch (e) {
       setError((e as Error).message);
     }
+  }
+
+  function importFeed(source: PriceSource, file: File | undefined) {
+    if (!file) return;
+    const form = new FormData();
+    form.set("file", file);
+    act(async () => {
+      const result = await api<{ imported: number; rejected: number; rejections: { row: number; reason: string }[] }>(
+        `/admin/sources/${source.id}/import`, { method: "POST", body: form }, true,
+      );
+      setFeedResult(`${source.name}: ${result.imported} imported, ${result.rejected} rejected.${result.rejections[0] ? ` Row ${result.rejections[0].row}: ${result.rejections[0].reason}.` : ""}`);
+    }, "Import finished.");
   }
 
   function addUser(event: FormEvent) {
@@ -110,6 +144,45 @@ export function AdminTools({ onChanged }: { onChanged: () => void }) {
           <button className="mini" onClick={() => act(() => postJson("/admin/market/refresh", {}, true), "Checking the DTI and DA for new reports. Results appear below in a minute or two.")}>Check for new prices now</button>
         </div>
         <p className="muted">Prices are checked automatically through the day. Use this after an agency publishes a new report.</p>
+      </section>
+
+      <section className="card">
+        <h2>Price data sources</h2>
+        <p className="muted">Nothing is imported from a source until permission is on record.</p>
+        <div className="table-scroll">
+          <table>
+            <thead><tr><th>Source</th><th>Permission</th><th className="num">Feed prices</th><th>Last import</th><th /></tr></thead>
+            <tbody>
+              {sources.map((source) => (
+                <tr key={source.id}>
+                  <td className="wrap"><b>{source.name}</b><small className="block">{source.notes}</small></td>
+                  <td><span className={`health ${source.can_run ? "good" : "bad"}`}>{source.can_run ? "● " : "▲ "}{PERMISSION[source.permission]}</span></td>
+                  <td className="num">{source.prices}</td>
+                  <td>{source.last_import_at ? source.last_import_at.slice(0, 10) : "Never"}</td>
+                  <td className="row-actions">
+                    {source.can_run && source.kind !== "government" && source.kind !== "open_data" && source.kind !== "community" && (
+                      <label className="mini">Import CSV<input type="file" accept=".csv,text/csv" hidden onChange={(e) => importFeed(source, e.target.files?.[0])} /></label>
+                    )}
+                    {source.permission === "pending" && <button className="mini" onClick={() => { setGranting(source.id); setProof(""); }}>Record permission</button>}
+                    {source.permission === "granted" && source.kind !== "community" && <button className="mini" onClick={() => act(() => send(`/admin/sources/${source.id}`, "PATCH", { permission: "pending" }), `${source.name} paused.`)}>Pause</button>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {granting && (
+          <form className="admin-form" onSubmit={(e) => {
+            e.preventDefault();
+            act(() => send(`/admin/sources/${granting}`, "PATCH", { permission: "granted", enabled: true, notes: proof }), "Permission recorded.");
+            setGranting(null);
+          }}>
+            <input required minLength={8} placeholder="Who granted permission, and when" aria-label="Permission record" value={proof} onChange={(e) => setProof(e.target.value)} />
+            <button className="btn primary">Save permission</button>
+          </form>
+        )}
+        {feedResult && <p className="notice">{feedResult}</p>}
+        <p className="hint">CSV columns: <code>retailer, product, size, price, verified_at</code>. Add <code>branch</code>, <code>city</code>, <code>latitude</code> and <code>longitude</code> for a branch price. Without a branch, it counts as a chain price.</p>
       </section>
 
       <section className="card">

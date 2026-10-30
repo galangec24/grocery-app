@@ -37,6 +37,10 @@ def _category(tags: list | None, fallback: str) -> str:
     return fallback
 
 
+def _tags(tags: list | None) -> str:
+    return " ".join(t[3:].replace("-", " ") for t in tags or [] if isinstance(t, str) and t.startswith("en:"))
+
+
 def product_doc(raw: dict, site: str) -> dict | None:
     """A catalog entry, or None when the record has no usable name or barcode."""
     code = _clean(raw.get("code"))
@@ -50,7 +54,7 @@ def product_doc(raw: dict, site: str) -> dict | None:
     return {
         "_id": f"off:{code}", "name": full_name[:160], "brand": brand[:80], "category": category[:80], "size": size,
         "variant": "", "barcode": code, "image_url": raw.get("image_small_url"), "source": "open-data", "status": "active",
-        "keywords": f"{full_name} {size} {category} {SITES[site][1]} {code}".lower(),
+        "keywords": f"{full_name} {size} {category} {SITES[site][1]} {_tags(raw.get('categories_tags'))} {code}".lower(),
         "synced_at": utcnow(),
     }
 

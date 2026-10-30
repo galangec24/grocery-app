@@ -256,7 +256,7 @@ function ListEditor({ draft, onChange, bulk, header, footer }: {
                     {line?.status === "custom" ? item.query : line?.label ?? item.query}
                     {line?.selected && <small>{peso(line.selected.price)} per {line.selected.unit}</small>}
                     {line?.status === "needs_price" && <small>No price yet. Be the first to enter it.</small>}
-                    {line?.status === "reported" && line.report && <small className="reported">₱{line.report.price.toFixed(2)} at {line.report.store_name}, {line.report.origin === "Open Prices" ? `Open Prices, ${new Date(line.report.reported_at).toLocaleDateString("en-PH", { dateStyle: "medium" })}` : "reported by a shopper"}</small>}
+                    {line?.status === "reported" && line.report && <small className="reported">₱{line.report.price.toFixed(2)} at {line.report.store_name}, {line.report.origin === "Shopper report" ? "reported by a shopper" : `${line.report.origin}, verified ${new Date(line.report.reported_at).toLocaleDateString("en-PH", { dateStyle: "medium" })}`}</small>}
                     {line?.status === "no_match" && <small>Not in our lists. Enter a price to count it.</small>}
                     {line?.status === "matched" && line.candidates.length > 1 && (
                       <select className="swap" aria-label={`Change ${item.query}`} value={line.selected!.id} onChange={(e) => pick(line, e.target.value)}>

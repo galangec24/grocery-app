@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from . import admin, api, catalog, market
+from . import admin, api, catalog, ingestion, market
 from .bootstrap import ensure_admin, purge_sample_data
 from .config import (
     BASE_DIR, CORS_ORIGINS, FETCH_MARKET_DATA, MARKET_CHECK_SECONDS, PRODUCT_IDLE_SECONDS, PRODUCT_PAGE_PAUSE_SECONDS,
@@ -39,7 +39,8 @@ async def product_sync_loop():
     while True:
         try:
             more = False
-            for site in open_data.SITES:
+            sites = open_data.SITES if ingestion.can_run(database, "open-food-facts") else ()
+            for site in sites:
                 more = await asyncio.to_thread(_sync_one_page, site) or more
                 await asyncio.sleep(PRODUCT_PAGE_PAUSE_SECONDS)
             await asyncio.sleep(0 if more else PRODUCT_IDLE_SECONDS)
@@ -56,6 +57,7 @@ async def lifespan(_: FastAPI):
     purge_sample_data(database)
     ensure_admin(database)
     catalog.seed(database)
+    ingestion.seed(database)
     tasks = [asyncio.create_task(market_loop()), asyncio.create_task(product_sync_loop())] if FETCH_MARKET_DATA else []
     yield
     for task in tasks:

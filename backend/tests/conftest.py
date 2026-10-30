@@ -5,7 +5,7 @@ os.environ["FETCH_MARKET_DATA"] = "false"
 import pytest
 from fastapi.testclient import TestClient
 
-from app import catalog
+from app import catalog, ingestion
 from app.api import limit_login, limit_report, limit_search
 from app.db import database, ensure_indexes
 from app.main import app
@@ -28,6 +28,7 @@ def client(db):
     with TestClient(app) as test_client:
         seed(db)  # After startup, whose cleanup would remove these fictional retailers.
         catalog.seed(db)
+        ingestion.seed(db)
         yield test_client
 
 

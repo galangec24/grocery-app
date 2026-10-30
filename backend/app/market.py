@@ -12,7 +12,7 @@ from datetime import timedelta
 import httpx
 from pymongo.database import Database
 
-from . import community
+from . import community, ingestion
 from . import comparison as cmp
 from .db import client, new_id, supports_transactions, utcnow
 from .sources import da_dpi, dti_srp, open_data
@@ -113,8 +113,9 @@ def ingest(db: Database) -> None:
             _record(db, "da_dpi", da_dpi.LISTING_URL, "failed", error=f"{type(error).__name__}: {error}"[:300])
 
     try:
-        with httpx.Client(headers=open_data.HEADERS, timeout=45, follow_redirects=True) as http:
-            open_data.sync_prices(db, http)
+        if ingestion.can_run(db, "open-prices"):
+            with httpx.Client(headers=open_data.HEADERS, timeout=45, follow_redirects=True) as http:
+                open_data.sync_prices(db, http)
     except Exception as error:
         log.warning("Open Prices check failed: %s", error)
 

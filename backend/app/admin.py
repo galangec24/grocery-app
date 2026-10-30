@@ -6,7 +6,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPExcepti
 from pydantic import BaseModel, Field, field_validator
 from pymongo.database import Database
 
-from . import catalog, community, market
+from . import catalog, community, ingestion, market
 from .sources import open_data
 from . import comparison as cmp
 from .config import MAX_CSV_BYTES
@@ -285,6 +285,53 @@ def delete_catalog_item(item_id: str, user: dict = Depends(require_system_admin)
     db.catalog_items.update_one({"_id": item_id}, {"$set": {"status": "hidden"}})
     audit(db, user, "catalog.removed", None, doc["name"])
     return {"deleted": True}
+
+
+class SourceCreate(BaseModel):
+    name: str = Field(min_length=2, max_length=120)
+    kind: str
+    terms_url: str = Field("", max_length=300)
+    notes: str = Field("", max_length=500)
+
+
+class SourceUpdate(BaseModel):
+    permission: str | None = Field(None, pattern="^(open_license|granted|pending|refused)$")
+    enabled: bool | None = None
+    notes: str | None = Field(None, max_length=500)
+
+
+@router.get("/sources")
+def list_sources(user: dict = Depends(require_system_admin), db: Database = Depends(get_db)):
+    return [ingestion.source_json(db, s) for s in db.price_sources.find().sort("name", 1)]
+
+
+@router.post("/sources", status_code=201)
+def create_source(body: SourceCreate, user: dict = Depends(require_system_admin), db: Database = Depends(get_db)):
+    source = ingestion.create_source(db, body.name, body.kind, body.terms_url, body.notes)
+    audit(db, user, "source.created", None, source["name"])
+    return ingestion.source_json(db, source)
+
+
+@router.patch("/sources/{source_id}")
+def update_source(
+    source_id: str, body: SourceUpdate, user: dict = Depends(require_system_admin), db: Database = Depends(get_db),
+):
+    source = ingestion.update_source(db, source_id, body.permission, body.enabled, body.notes)
+    audit(db, user, "source.updated", None, f'{source["name"]}: {source["permission"]}, enabled={source["enabled"]}')
+    return ingestion.source_json(db, source)
+
+
+@router.post("/sources/{source_id}/import")
+async def import_source(
+    source_id: str, file: UploadFile = File(),
+    user: dict = Depends(require_system_admin), db: Database = Depends(get_db),
+):
+    content = await file.read(MAX_CSV_BYTES + 1)
+    if len(content) > MAX_CSV_BYTES:
+        raise HTTPException(413, "CSV file must be 2 MB or smaller")
+    result = ingestion.import_feed(db, source_id, content)
+    audit(db, user, "source.imported", None, f'{source_id}: {result["imported"]} imported, {result["rejected"]} rejected')
+    return result
 
 
 @router.get("/data-sources")

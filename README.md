@@ -29,6 +29,14 @@ Products come from the [Open Food Facts](https://world.openfoodfacts.org) family
 
 Store prices come from [Open Prices](https://prices.openfoodfacts.org) and shoppers who share what they see. Coverage is thin for now, because no free source has complete Philippine shelf prices. Every price shows where it came from, and nothing is estimated.
 
+### Data integration layer
+
+`backend/app/ingestion.py` registers every price source with its type and permission status. Nothing is imported until permission is on record, and administrators manage this from the dashboard under **Price data sources**. Retailer CSV feeds import there too.
+
+Each price records its retailer, size and last verified date, plus its scope. A price with no named branch is a chain price: it is labelled as one and never pinned to a store on the map, because an online WalterMart price doesn't prove what every branch charges. Prices older than 30 days drop out.
+
+Budolista is registered but blocked: its terms allow personal, non-commercial use only and its `robots.txt` disallows `/api/`. Connecting it needs written permission from Baptiste Group.
+
 Drafts, the budget and saved purchases stay on the device, so they need no account but don't move between devices.
 
 ## Automation
