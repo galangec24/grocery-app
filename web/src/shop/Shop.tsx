@@ -1,12 +1,15 @@
+import { BudgetBar, BudgetProvider } from "../budget";
 import { Hero3D, useTilt } from "../site/Hero3D";
 import { PriceBoard } from "../site/PriceBoard";
 import { DraftEditor, DraftList, QuickCompare } from "./Drafts";
 
 const TABS = [
   ["/shop", "Prices", "₱"],
-  ["/shop/compare", "Multi search", "☰"],
+  ["/shop/compare", "My list", "☰"],
   ["/shop/drafts", "Drafts", "✎"],
 ];
+
+const TITLES: Record<string, string> = { compare: "Build your list", drafts: "Your drafts" };
 
 export function Shop({ path }: { path: string }) {
   const [, , section, id] = path.split("/");
@@ -18,27 +21,32 @@ export function Shop({ path }: { path: string }) {
 
   const active = `/shop${section ? `/${section}` : ""}`;
   return (
-    <div className="shop">
-      <header className="shop-hero" onPointerMove={tilt}>
-        <a className="brand" href="#/"><img className="brand-mark" src="./logo.png" alt="" /> Grocery Price Finder</a>
-        {!section && (
-          <div className="shop-hero-body">
-            <div>
-              <p className="eyebrow">Official Philippine prices</p>
-              <h1>Today's prices</h1>
+    <BudgetProvider>
+      <div className="shop">
+        <header className={`shop-hero${section ? " slim" : ""}`} onPointerMove={tilt}>
+          <a className="brand" href="#/"><img className="brand-mark" src="./logo.png" alt="" /> Grocery Price Finder</a>
+          {section ? (
+            <h1>{TITLES[section]}</h1>
+          ) : (
+            <div className="shop-hero-body">
+              <div>
+                <p className="eyebrow">Official Philippine prices</p>
+                <h1>Today's prices</h1>
+              </div>
+              <Hero3D scene={scene} count={3} />
             </div>
-            <Hero3D scene={scene} count={3} />
-          </div>
-        )}
-      </header>
-      <main className="shop-page">{page}</main>
-      <nav className="tabs" aria-label="Main">
-        {TABS.map(([to, label, icon]) => (
-          <a key={to} href={`#${to}`} className={active === to ? "on" : ""} aria-current={active === to ? "page" : undefined}>
-            <span aria-hidden>{icon}</span>{label}
-          </a>
-        ))}
-      </nav>
-    </div>
+          )}
+        </header>
+        <BudgetBar />
+        <main className="shop-page">{page}</main>
+        <nav className="tabs" aria-label="Main">
+          {TABS.map(([to, label, icon]) => (
+            <a key={to} href={`#${to}`} className={active === to ? "on" : ""} aria-current={active === to ? "page" : undefined}>
+              <span aria-hidden>{icon}</span>{label}
+            </a>
+          ))}
+        </nav>
+      </div>
+    </BudgetProvider>
   );
 }

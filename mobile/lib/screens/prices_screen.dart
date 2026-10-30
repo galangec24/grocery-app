@@ -17,6 +17,7 @@ class _PricesScreenState extends State<PricesScreen> {
   final _search = TextEditingController();
   final _cityField = TextEditingController();
   List<PriceRow>? _rows;
+  List<CatalogItem> _catalog = const [];
   String? _error;
   String? _loadedIsland;
   bool _loaded = false;
@@ -46,6 +47,8 @@ class _PricesScreenState extends State<PricesScreen> {
     try {
       final rows = await state.api.prices(island: state.city?.island);
       if (mounted) setState(() => _rows = rows);
+      final catalog = await state.api.catalog();
+      if (mounted) setState(() => _catalog = catalog);
     } on ApiException catch (error) {
       if (mounted) setState(() => _error = error.message);
     }
@@ -62,6 +65,25 @@ class _PricesScreenState extends State<PricesScreen> {
     }).toList();
   }
 
+  List<CatalogItem> get _brands {
+    final words = _search.text.toLowerCase().split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
+    if (words.isEmpty) return const [];
+    return _catalog.where((item) {
+      return words.every((w) =>
+          item.keywords.contains(w) || (w.endsWith('s') && item.keywords.contains(w.substring(0, w.length - 1))));
+    }).take(24).toList();
+  }
+
+  Future<void> _addBrand(CatalogItem item) async {
+    final state = AppScope.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final all = await state.drafts.read();
+    final draft = all.isNotEmpty ? all.first : Draft(name: 'My list');
+    draft.add(DraftItem(query: '${item.name} ${item.size}'));
+    await state.drafts.save(draft);
+    messenger.showSnackBar(SnackBar(content: Text('Added to ${draft.name}. Enter the shelf price there.')));
+  }
+
   Future<void> _addToDraft(PriceRow row) async {
     final state = AppScope.of(context);
     final messenger = ScaffoldMessenger.of(context);
@@ -75,6 +97,7 @@ class _PricesScreenState extends State<PricesScreen> {
   @override
   Widget build(BuildContext context) {
     final shown = _shown;
+    final brands = _brands;
     final columns = (MediaQuery.sizeOf(context).width / 420).floor().clamp(1, 3);
     return RefreshIndicator(
       onRefresh: _load,
@@ -88,7 +111,7 @@ class _PricesScreenState extends State<PricesScreen> {
               controller: _search,
               onChanged: (_) => setState(() {}),
               decoration: const InputDecoration(
-                hintText: 'Search rice, sardines, tilapia…',
+                hintText: 'Search rice, Mega Sardines, Piatos…',
                 prefixIcon: Icon(Icons.search),
                 border: OutlineInputBorder(),
               ),
@@ -109,6 +132,25 @@ class _PricesScreenState extends State<PricesScreen> {
             ),
           ),
         ),
+        if (brands.isNotEmpty)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('Found in stores', style: Theme.of(context).textTheme.titleMedium),
+                const Text('No official price yet. Add one to your draft and enter the shelf price.'),
+                const SizedBox(height: 6),
+                Wrap(spacing: 8, runSpacing: 8, children: [
+                  for (final item in brands)
+                    ActionChip(
+                      avatar: const Icon(Icons.add, size: 18),
+                      label: Text('${item.name} ${item.size}'),
+                      onPressed: () => _addBrand(item),
+                    ),
+                ]),
+              ]),
+            ),
+          ),
         if (_error != null)
           SliverToBoxAdapter(child: Message(text: _error!, action: 'Try again', onAction: _load))
         else if (_rows == null)
@@ -116,7 +158,7 @@ class _PricesScreenState extends State<PricesScreen> {
               child: Padding(padding: EdgeInsets.all(32), child: Center(child: CircularProgressIndicator())))
         else if (_rows!.isEmpty)
           const SliverToBoxAdapter(child: Message(text: 'Official prices are being collected. Check back in a few minutes.'))
-        else if (shown.isEmpty)
+        else if (shown.isEmpty && brands.isEmpty)
           const SliverToBoxAdapter(child: Message(text: 'Nothing matches. Try one word, like “rice”.'))
         else
           SliverPadding(
@@ -162,7 +204,7 @@ class _CityCard extends StatelessWidget {
           FilledButton.icon(
             onPressed: state.locating ? null : state.useDeviceLocation,
             icon: const Icon(Icons.my_location),
-            label: Text(state.locating ? 'Locating…' : 'Use my location'),
+            label: Text(state.locating ? 'Finding your city…' : city == null ? 'Use my location' : 'Refresh location'),
           ),
           if (city != null) OutlinedButton(onPressed: state.clearCity, child: const Text('Clear')),
         ]),

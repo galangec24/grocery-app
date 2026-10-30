@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api.dart';
 import 'drafts.dart';
+
+const _budgetKey = 'budget_v1';
 
 /// Shared app data. Device coordinates are used once and never kept.
 class AppState extends ChangeNotifier {
@@ -16,6 +19,34 @@ class AppState extends ChangeNotifier {
   CityInfo? city;
   bool locating = false;
   String? locationError;
+
+  double? budget;
+  bool budgetLoaded = false;
+  double spent = 0;
+
+  Future<void> loadBudget() async {
+    final prefs = await SharedPreferences.getInstance();
+    budget = prefs.getDouble(_budgetKey);
+    budgetLoaded = true;
+    notifyListeners();
+  }
+
+  Future<void> setBudget(double? value) async {
+    budget = value != null && value > 0 ? value : null;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    if (budget == null) {
+      await prefs.remove(_budgetKey);
+    } else {
+      await prefs.setDouble(_budgetKey, budget!);
+    }
+  }
+
+  void setSpent(double value) {
+    if (spent == value) return;
+    spent = value;
+    notifyListeners();
+  }
 
   Future<void> useDeviceLocation() async {
     _start();

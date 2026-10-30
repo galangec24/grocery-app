@@ -5,6 +5,7 @@ import 'screens/multi_screen.dart';
 import 'screens/prices_screen.dart';
 import 'state.dart';
 import 'updates.dart';
+import 'widgets.dart';
 
 void main() => runApp(const GroceryApp());
 
@@ -46,7 +47,11 @@ class _HomeShellState extends State<HomeShell> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) runUpdateChecks(context);
+      if (!mounted) return;
+      final state = AppScope.of(context);
+      state.loadBudget();
+      state.useDeviceLocation(); // Finds the shopper's city as soon as the app opens.
+      runUpdateChecks(context);
     });
   }
 
@@ -55,7 +60,12 @@ class _HomeShellState extends State<HomeShell> {
   @override
   Widget build(BuildContext context) {
     final wide = MediaQuery.sizeOf(context).width >= 700;
-    final page = SafeArea(child: IndexedStack(index: _tab, children: _pages));
+    final page = SafeArea(
+      child: Column(children: [
+        const BudgetBar(),
+        Expanded(child: IndexedStack(index: _tab, children: _pages)),
+      ]),
+    );
     if (wide) {
       return Scaffold(
         body: Row(children: [
@@ -65,7 +75,7 @@ class _HomeShellState extends State<HomeShell> {
             onDestinationSelected: (i) => setState(() => _tab = i),
             destinations: const [
               NavigationRailDestination(icon: Icon(Icons.sell_outlined), label: Text('Prices')),
-              NavigationRailDestination(icon: Icon(Icons.checklist), label: Text('Multi search')),
+              NavigationRailDestination(icon: Icon(Icons.checklist), label: Text('My list')),
               NavigationRailDestination(icon: Icon(Icons.edit_note), label: Text('Drafts')),
             ],
           ),
@@ -80,7 +90,7 @@ class _HomeShellState extends State<HomeShell> {
         onDestinationSelected: (i) => setState(() => _tab = i),
         destinations: const [
           NavigationDestination(icon: Icon(Icons.sell_outlined), label: 'Prices'),
-          NavigationDestination(icon: Icon(Icons.checklist), label: 'Multi search'),
+          NavigationDestination(icon: Icon(Icons.checklist), label: 'My list'),
           NavigationDestination(icon: Icon(Icons.edit_note), label: 'Drafts'),
         ],
       ),

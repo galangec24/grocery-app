@@ -7,6 +7,8 @@ export interface DraftItem {
   quantity: number;
   priceId?: string;
   label?: string;
+  customPrice?: number;
+  checked?: boolean;
 }
 
 export interface Draft {
@@ -14,6 +16,7 @@ export interface Draft {
   name: string;
   items: DraftItem[];
   updatedAt: string;
+  lastTotal?: number;
 }
 
 const KEY = "drafts_v2";
@@ -42,6 +45,14 @@ export function saveDraft(draft: Draft): Draft {
 
 export function deleteDraft(id: string) {
   localStorage.setItem(KEY, JSON.stringify(readDrafts().filter((d) => d.id !== id)));
+}
+
+/** Starts a new list from an old one, with nothing ticked off. */
+export function duplicateDraft(draft: Draft): Draft {
+  return saveDraft({
+    ...draft, id: newId(), name: `${draft.name || "Untitled draft"} copy`,
+    items: draft.items.map((i) => ({ ...i, id: newId(), checked: false })),
+  });
 }
 
 export function useDrafts() {

@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { api, MarketSummary, PriceRow, query } from "../api";
+import { api, CatalogItem, MarketSummary, PriceRow, query } from "../api";
 import { addItems, newDraft, readDrafts, saveDraft } from "../drafts";
 import { longDate, mapUrl, peso } from "../format";
 import { useLocation } from "../location";
@@ -51,7 +51,7 @@ function CityPanel() {
     <section className="panel city">
       <div className="city-head">
         <div>
-          <h2>{city ? `${city.city}, ${city.region}` : "Find your city"}</h2>
+          <h2>{city ? `📍 ${city.city}, ${city.region}` : busy ? "Finding your city…" : "Find your city"}</h2>
           <p className="muted">
             {city
               ? city.stores_available
@@ -61,7 +61,7 @@ function CityPanel() {
           </p>
         </div>
         <div className="city-actions">
-          <button className="btn primary" onClick={locate} disabled={busy}>{busy ? "Locating…" : "Use my location"}</button>
+          <button className={`btn${city ? "" : " primary"}`} onClick={locate} disabled={busy}>{busy ? "Finding your city…" : city ? "Refresh location" : "Use my location"}</button>
           {city && <button className="btn" onClick={clear}>Clear</button>}
         </div>
       </div>
@@ -105,6 +105,7 @@ export function PriceBoard({ compact }: { compact?: boolean }) {
   const [sort, setSort] = useState<{ key: SortKey; up: boolean } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [added, setAdded] = useState<string | null>(null);
+  const [catalog, setCatalog] = useState<CatalogItem[]>([]);
   const island = city?.island;
 
   useEffect(() => {
@@ -116,6 +117,10 @@ export function PriceBoard({ compact }: { compact?: boolean }) {
       .then((r) => { setRows(r.results); setError(null); })
       .catch((e) => setError(e.message));
   }, [island]);
+
+  useEffect(() => {
+    api<CatalogItem[]>("/market/catalog").then(setCatalog).catch(() => setCatalog([]));
+  }, []);
 
   const categories = useMemo(
     () => [...new Set((rows ?? []).filter((r) => !source || r.source === source).map((r) => r.category))].sort(),
@@ -138,6 +143,12 @@ export function PriceBoard({ compact }: { compact?: boolean }) {
     });
   }, [rows, term, source, category, sort]);
 
+  const brands = useMemo(() => {
+    const words = term.toLowerCase().split(/\s+/).filter(Boolean);
+    if (!words.length) return [];
+    return catalog.filter((item) => words.every((w) => item.keywords.includes(w) || (w.endsWith("s") && item.keywords.includes(w.slice(0, -1)))));
+  }, [catalog, term]);
+
   const toggle = (key: SortKey) => setSort((s) => ({ key, up: s?.key === key ? !s.up : key !== "change_pct" }));
   const arrow = (key: SortKey) => (sort?.key === key ? (sort.up ? " ↑" : " ↓") : "");
   const aria = (key: SortKey) => (sort?.key === key ? (sort.up ? "ascending" : "descending") : "none");
@@ -147,6 +158,12 @@ export function PriceBoard({ compact }: { compact?: boolean }) {
     const label = [row.commodity, row.specification].filter(Boolean).join(", ");
     saveDraft(addItems(base, [{ query: label, quantity: 1, priceId: row.id, label }]));
     setAdded(row.id);
+  }
+
+  function addBrand(item: CatalogItem) {
+    const base = readDrafts()[0] ?? newDraft("My list");
+    saveDraft(addItems(base, [{ query: `${item.name} ${item.size}`, quantity: 1 }]));
+    setAdded(item.id);
   }
 
   const srp = summary?.sources.find((s) => s.id === "dti_srp");
@@ -167,7 +184,7 @@ export function PriceBoard({ compact }: { compact?: boolean }) {
 
       <section className="panel table-panel">
         <div className="controls">
-          <input type="search" value={term} onChange={(e) => setTerm(e.target.value)} placeholder="Search rice, sardines, tilapia, Bear Brand…" aria-label="Search prices" />
+          <input type="search" value={term} onChange={(e) => setTerm(e.target.value)} placeholder="Search rice, Mega Sardines, Piatos, junk food…" aria-label="Search prices" />
           <select value={source} aria-label="Price type" onChange={(e) => { setSource(e.target.value); setCategory(""); }}>
             <option value="">All prices</option>
             <option value="dti_srp">Standard price (DTI SRP)</option>
@@ -181,7 +198,22 @@ export function PriceBoard({ compact }: { compact?: boolean }) {
         {error && <p className="error" role="alert">{error}</p>}
         {!rows && !error && <p className="muted pad">Loading official prices…</p>}
         {rows && rows.length === 0 && <p className="muted pad">Official prices are being collected. Check back in a few minutes.</p>}
-        {rows && rows.length > 0 && shown.length === 0 && <p className="muted pad">Nothing matches. Try one word, like “rice”.</p>}
+        {rows && rows.length > 0 && shown.length === 0 && brands.length === 0 && <p className="muted pad">Nothing matches. Try one word, like “rice”.</p>}
+        {brands.length > 0 && (
+          <div className="brand-results">
+            <h3>Found in stores</h3>
+            <p className="hint">These brands have no official price yet. Add one to your draft and enter the shelf price.</p>
+            <div className="brand-grid">
+              {brands.slice(0, 24).map((item) => (
+                <article className="brand-card" key={item.id}>
+                  <strong>{item.name}</strong>
+                  <small>{item.size} · {item.category}</small>
+                  <button className="mini" onClick={() => addBrand(item)} disabled={added === item.id}>{added === item.id ? "Added" : "Add to draft"}</button>
+                </article>
+              ))}
+            </div>
+          </div>
+        )}
         {shown.length > 0 && (
           <>
             <p className="result-count">{shown.length} {shown.length === 1 ? "price" : "prices"}</p>

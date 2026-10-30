@@ -12,6 +12,7 @@ from datetime import timedelta
 import httpx
 from pymongo.database import Database
 
+from . import catalog
 from . import comparison as cmp
 from .db import client, new_id, supports_transactions, utcnow
 from .sources import da_dpi, dti_srp
@@ -210,26 +211,43 @@ def _rank(row: dict, tokens: list[str]) -> tuple:
 
 
 def basket(rows: list[dict], items: list[dict]) -> dict:
-    """Cost a list at official prices. Each line stays one exact item and size."""
+    """Cost a list. Official prices first, then the shopper's own shelf prices.
+
+    A product in the brand catalog has no official price, so it stays out of the total
+    until the shopper enters one. Prices are never guessed.
+    """
     by_id = {r["id"]: r for r in rows}
     lines, total = [], 0
     for item in items:
-        matched = sorted(search(rows, item["query"]), key=lambda r: _rank(r, cmp.tokenize(item["query"])))
+        query = item["query"]
+        custom = item.get("custom_price")
+        matched = sorted(search(rows, query), key=lambda r: _rank(r, cmp.tokenize(query)))
         chosen = by_id.get(item.get("price_id")) or (matched[0] if matched else None)
-        line_total = round(chosen["price"] * 100) * item["quantity"] if chosen else 0
+        brand = catalog.search(query)
+        status = "no_match"
+        unit_centavos = 0
+        label = query
+        if custom is not None:
+            status, unit_centavos, chosen = "custom", round(custom * 100), None
+        elif chosen:
+            status, unit_centavos, label = "matched", round(chosen["price"] * 100), chosen["commodity"]
+        elif brand:
+            status, label = "needs_price", f'{brand[0]["name"]} {brand[0]["size"]}'
+        line_total = unit_centavos * item["quantity"]
         total += line_total
         lines.append({
-            "query": item["query"], "quantity": item["quantity"],
-            "status": "matched" if chosen else "no_match",
-            "selected": chosen, "line_total": cmp.money(line_total),
+            "query": query, "quantity": item["quantity"], "status": status, "label": label,
+            "selected": chosen, "unit_price": cmp.money(unit_centavos), "line_total": cmp.money(line_total),
             "candidates": [
                 {key: r[key] for key in ("id", "commodity", "specification", "unit", "price", "source_label", "region")}
                 for r in matched[:12]
             ],
         })
-    matched_lines = [l for l in lines if l["status"] == "matched"]
+    counted = [l for l in lines if l["status"] in ("matched", "custom")]
     return {
         "lines": lines, "total": cmp.money(total), "currency": "PHP",
-        "items_matched": len(matched_lines), "items_unmatched": len(lines) - len(matched_lines),
+        "items_matched": len(counted),
+        "items_need_price": sum(l["status"] == "needs_price" for l in lines),
+        "items_unmatched": sum(l["status"] == "no_match" for l in lines),
         "generated_at": cmp.iso(utcnow()),
     }

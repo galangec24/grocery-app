@@ -200,6 +200,41 @@ def test_basket_user_can_pick_exact_size(loaded, client):
     assert pinned["lines"][0]["selected"]["id"] == other["id"] and pinned["total"] == other["price"]
 
 
+@pytest.mark.parametrize("query", ["mega sardines", "piatos", "junk food", "nova", "chips"])
+def test_brands_outside_official_lists_are_searchable(client, query):
+    items = client.get("/api/v1/market/catalog").json()
+    tokens = query.split()
+    assert any(all(t in item["keywords"] for t in tokens) for item in items)
+
+
+def test_catalog_never_contains_prices(client):
+    for item in client.get("/api/v1/market/catalog").json():
+        assert not any("price" in key for key in item)
+
+
+def test_catalog_item_waits_for_a_shelf_price(loaded, client):
+    data = client.post("/api/v1/market/basket", json={"items": [{"query": "piatos"}]}).json()
+    assert data["lines"][0]["status"] == "needs_price" and data["total"] == 0
+    assert data["items_need_price"] == 1 and "Piatos" in data["lines"][0]["label"]
+
+
+def test_official_price_wins_over_the_catalog(loaded, client):
+    line = client.post("/api/v1/market/basket", json={"items": [{"query": "Bear Brand"}]}).json()["lines"][0]
+    assert line["status"] == "matched"
+
+
+def test_shelf_price_counts_in_the_total(loaded, client):
+    body = {"items": [{"query": "piatos", "quantity": 2, "custom_price": 45.5}, {"query": "Bear Brand"}]}
+    data = client.post("/api/v1/market/basket", json=body).json()
+    assert data["lines"][0]["status"] == "custom" and data["lines"][0]["line_total"] == 91.0
+    assert data["total"] == 141.0 and data["items_matched"] == 2
+
+
+def test_negative_shelf_price_is_refused(client):
+    body = {"items": [{"query": "piatos", "custom_price": -1}]}
+    assert client.post("/api/v1/market/basket", json=body).status_code == 422
+
+
 def test_sample_data_is_removed_and_real_prices_stay(client, db, loaded):
     purge_sample_data(db)
     assert db.organizations.count_documents({}) == 0 and db.users.count_documents({}) == 0

@@ -33,6 +33,63 @@ class Card3d extends StatelessWidget {
   }
 }
 
+/// Stays on screen on every tab, so the shopper always sees what's left.
+class BudgetBar extends StatelessWidget {
+  const BudgetBar({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final state = AppScope.of(context);
+    final budget = state.budget;
+    final left = budget == null ? 0.0 : budget - state.spent;
+    final used = budget == null ? 0.0 : (state.spent / budget).clamp(0.0, 1.0);
+    final over = budget != null && left < 0;
+    final color = over
+        ? const Color(0xFFB3361C)
+        : used >= 0.8
+            ? const Color(0xFFE39A1C)
+            : const Color(0xFF1C7A43);
+    return Card3d(
+      margin: const EdgeInsets.fromLTRB(10, 6, 10, 8),
+      padding: 10,
+      child: Row(children: [
+        SizedBox(
+          width: 118,
+          child: TextFormField(
+            initialValue: budget?.toStringAsFixed(0) ?? '',
+            key: ValueKey(state.budgetLoaded),
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(labelText: 'My budget', prefixText: '₱', isDense: true, border: OutlineInputBorder()),
+            onChanged: (value) => state.setBudget(double.tryParse(value)),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+            Text(
+              budget == null
+                  ? 'List total: ${peso(state.spent)}'
+                  : over
+                      ? '${peso(-left)} over budget'
+                      : '${peso(left)} left of ${peso(budget)}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontWeight: FontWeight.w700, color: over ? color : null),
+            ),
+            if (budget != null) ...[
+              const SizedBox(height: 5),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: LinearProgressIndicator(value: used, minHeight: 9, color: color, backgroundColor: const Color(0xFFE8E6DC)),
+              ),
+            ],
+          ]),
+        ),
+      ]),
+    );
+  }
+}
+
 /// Banner with real prices on cards tilted in perspective.
 class HeroHeader extends StatelessWidget {
   const HeroHeader({super.key, required this.rows});

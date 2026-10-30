@@ -81,3 +81,8 @@ def test_basket_totals_real_prices():
     data = response.json()
     assert data["items_matched"] == 2
     assert data["total"] == round(sum(l["line_total"] for l in data["lines"]), 2)
+
+
+def test_brand_catalog_finds_piatos_and_mega():
+    names = " ".join(item["name"] for item in get("/market/catalog"))
+    assert "Piatos" in names and "Mega Sardines" in names

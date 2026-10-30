@@ -31,6 +31,16 @@ class _DraftsScreenState extends State<DraftsScreen> {
     _load();
   }
 
+  String _inCart(Draft draft) {
+    final done = draft.items.where((i) => i.checked).length;
+    return done == 0 ? '' : ', $done in cart';
+  }
+
+  Future<void> _duplicate(Draft draft) async {
+    await AppScope.of(context).drafts.save(draft.duplicate());
+    _load();
+  }
+
   Future<void> _delete(Draft draft) async {
     final store = AppScope.of(context).drafts;
     final confirmed = await showDialog<bool>(
@@ -65,20 +75,28 @@ class _DraftsScreenState extends State<DraftsScreen> {
         ),
         const SizedBox(height: 8),
         if (_drafts != null && drafts.isEmpty)
-          const Message(text: 'No drafts yet. Start one, or save a list from Multi search.'),
+          const Message(text: 'No drafts yet. Start one, or save a list from My list.'),
         for (final draft in drafts)
           Card3d(
             margin: const EdgeInsets.only(top: 10),
             padding: 4,
             child: ListTile(
               title: Text(draft.name.isEmpty ? 'Untitled draft' : draft.name),
-              subtitle: Text('${draft.items.length} ${draft.items.length == 1 ? 'item' : 'items'}'),
+              subtitle: Text(
+                  '${draft.lastTotal == null ? 'No total yet' : peso(draft.lastTotal!)} · ${draft.items.length} ${draft.items.length == 1 ? 'item' : 'items'}${_inCart(draft)}'),
               onTap: () => _open(draft),
-              trailing: IconButton(
-                tooltip: 'Delete',
-                onPressed: () => _delete(draft),
-                icon: const Icon(Icons.delete_outline),
-              ),
+              trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                IconButton(
+                  tooltip: 'Duplicate',
+                  onPressed: () => _duplicate(draft),
+                  icon: const Icon(Icons.copy_all_outlined),
+                ),
+                IconButton(
+                  tooltip: 'Delete',
+                  onPressed: () => _delete(draft),
+                  icon: const Icon(Icons.delete_outline),
+                ),
+              ]),
             ),
           ),
       ]),

@@ -25,9 +25,9 @@ class _MultiScreenState extends State<MultiScreen> {
   @override
   Widget build(BuildContext context) {
     return ListView(padding: const EdgeInsets.all(16), children: [
-      Text('Search multiple items', style: Theme.of(context).textTheme.headlineSmall),
+      Text('Build your list', style: Theme.of(context).textTheme.headlineSmall),
       const SizedBox(height: 4),
-      const Text('One item per line, or separate with commas.'),
+      const Text('Search any brand. Your receipt updates as you go.'),
       const SizedBox(height: 12),
       ListEditor(
         key: ValueKey(_draft.id),

@@ -10,7 +10,7 @@ String newId() =>
     '${DateTime.now().microsecondsSinceEpoch}-${Random().nextInt(1 << 32)}';
 
 class DraftItem {
-  DraftItem({String? id, required this.query, this.quantity = 1, this.priceId, this.label})
+  DraftItem({String? id, required this.query, this.quantity = 1, this.priceId, this.label, this.customPrice, this.checked = false})
       : id = id ?? newId();
 
   DraftItem.fromJson(Map<String, dynamic> json)
@@ -18,13 +18,17 @@ class DraftItem {
         query = json['query'] as String,
         quantity = json['quantity'] as int,
         priceId = json['priceId'] as String?,
-        label = json['label'] as String?;
+        label = json['label'] as String?,
+        customPrice = (json['customPrice'] as num?)?.toDouble(),
+        checked = (json['checked'] as bool?) ?? false;
 
   final String id;
   final String query;
   int quantity;
   String? priceId;
   String? label;
+  double? customPrice;
+  bool checked;
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -32,6 +36,8 @@ class DraftItem {
         'quantity': quantity,
         'priceId': priceId,
         'label': label,
+        'customPrice': customPrice,
+        'checked': checked,
       };
 }
 
@@ -45,6 +51,7 @@ class Draft {
       : id = json['id'] as String,
         name = json['name'] as String,
         updatedAt = DateTime.parse(json['updatedAt'] as String),
+        lastTotal = (json['lastTotal'] as num?)?.toDouble(),
         items = (json['items'] as List)
             .map((i) => DraftItem.fromJson(i as Map<String, dynamic>))
             .toList();
@@ -53,11 +60,22 @@ class Draft {
   String name;
   List<DraftItem> items;
   DateTime updatedAt;
+  double? lastTotal;
+
+  /// Starts a new list from this one, with nothing ticked off.
+  Draft duplicate() => Draft(
+        name: '${name.isEmpty ? 'Untitled draft' : name} copy',
+        items: [
+          for (final i in items)
+            DraftItem(query: i.query, quantity: i.quantity, priceId: i.priceId, label: i.label, customPrice: i.customPrice),
+        ],
+      )..lastTotal = lastTotal;
 
   Map<String, dynamic> toJson() => {
         'id': id,
         'name': name,
         'updatedAt': updatedAt.toIso8601String(),
+        'lastTotal': lastTotal,
         'items': items.map((i) => i.toJson()).toList(),
       };
 

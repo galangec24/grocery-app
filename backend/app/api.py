@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from pymongo.database import Database
 
 from . import comparison as cmp
-from . import location, market
+from . import catalog, location, market
 from .config import LOGIN_RATE_PER_MINUTE, MAX_MULTI_SEARCH_ITEMS, NEARBY_RADIUS_KM, SEARCH_RATE_PER_MINUTE
 from .db import get_db, utcnow
 from .security import RateLimiter, current_user, issue_token, read_token, verify_password
@@ -78,10 +78,17 @@ def market_prices(
     return {"count": len(rows), "results": rows, "generated_at": cmp.iso(utcnow())}
 
 
+@router.get("/market/catalog")
+def market_catalog():
+    """Brand names and sizes for search. Holds no prices."""
+    return [{k: item[k] for k in ("id", "name", "brand", "category", "size", "keywords")} for item in catalog.CATALOG]
+
+
 class BasketItem(BaseModel):
     query: str = Field(min_length=1, max_length=120)
     quantity: int = Field(1, ge=1, le=999)
     price_id: str | None = Field(None, max_length=300)
+    custom_price: float | None = Field(None, ge=0, le=999999)
 
     @field_validator("query")
     @classmethod

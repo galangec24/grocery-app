@@ -89,11 +89,28 @@ class CityInfo {
   final List<CityStore> stores;
 }
 
+class CatalogItem {
+  CatalogItem.fromJson(Map<String, dynamic> json)
+      : id = json['id'] as String,
+        name = json['name'] as String,
+        category = json['category'] as String,
+        size = json['size'] as String,
+        keywords = json['keywords'] as String;
+
+  final String id;
+  final String name;
+  final String category;
+  final String size;
+  final String keywords;
+}
+
 class BasketLine {
   BasketLine.fromJson(Map<String, dynamic> json)
       : query = json['query'] as String,
         quantity = json['quantity'] as int,
-        matched = json['status'] == 'matched',
+        status = json['status'] as String,
+        label = json['label'] as String,
+        unitPrice = (json['unit_price'] as num).toDouble(),
         lineTotal = (json['line_total'] as num).toDouble(),
         selected = json['selected'] == null
             ? null
@@ -104,7 +121,9 @@ class BasketLine {
 
   final String query;
   final int quantity;
-  final bool matched;
+  final String status;
+  final String label;
+  final double unitPrice;
   final double lineTotal;
   final PriceRow? selected;
   final List<Candidate> candidates;
@@ -169,6 +188,11 @@ class Api {
     return (data['results'] as List)
         .map((r) => PriceRow.fromJson(r as Map<String, dynamic>))
         .toList();
+  }
+
+  Future<List<CatalogItem>> catalog() async {
+    final data = await _send(() => _client.get(_uri('/market/catalog')));
+    return (data as List).map((c) => CatalogItem.fromJson(c as Map<String, dynamic>)).toList();
   }
 
   Future<CityInfo> resolveLocation(double latitude, double longitude) async {

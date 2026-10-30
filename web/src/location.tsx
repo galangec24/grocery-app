@@ -1,4 +1,4 @@
-import { createContext, ReactNode, useContext, useMemo, useState } from "react";
+import { createContext, ReactNode, useContext, useEffect, useMemo, useState } from "react";
 import { api, CityInfo, query } from "./api";
 
 interface LocationState {
@@ -44,7 +44,7 @@ export function LocationProvider({ children }: { children: ReactNode }) {
           ({ coords }) => resolve({ latitude: coords.latitude, longitude: coords.longitude }),
           () => {
             setBusy(false);
-            setError("Location is turned off. Type your city instead; everything still works.");
+            setError("We couldn't get your location. Type your city and everything still works.");
           },
           { timeout: 12000 },
         );
@@ -53,6 +53,21 @@ export function LocationProvider({ children }: { children: ReactNode }) {
       clear: () => { setCity(null); setError(null); },
     };
   }, [city, busy, error]);
+
+  // Finds the shopper's city on arrival. The browser still asks permission the first time.
+  useEffect(() => {
+    let live = true;
+    const start = () => { if (live) value.locate(); };
+    if (navigator.permissions?.query) {
+      navigator.permissions.query({ name: "geolocation" })
+        .then((status) => { if (status.state !== "denied") start(); })
+        .catch(start);
+    } else {
+      start();
+    }
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return <LocationContext.Provider value={value}>{children}</LocationContext.Provider>;
 }

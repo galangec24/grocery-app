@@ -58,11 +58,22 @@ export interface Candidate {
   region: string;
 }
 
+export interface CatalogItem {
+  id: string;
+  name: string;
+  brand: string;
+  category: string;
+  size: string;
+  keywords: string;
+}
+
 export interface BasketLine {
   query: string;
   quantity: number;
-  status: "matched" | "no_match";
+  status: "matched" | "custom" | "needs_price" | "no_match";
+  label: string;
   selected: PriceRow | null;
+  unit_price: number;
   line_total: number;
   candidates: Candidate[];
 }
@@ -71,6 +82,7 @@ export interface BasketResponse {
   lines: BasketLine[];
   total: number;
   items_matched: number;
+  items_need_price: number;
   items_unmatched: number;
 }
 
