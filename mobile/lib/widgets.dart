@@ -17,10 +17,14 @@ class Card3d extends StatelessWidget {
       margin: margin,
       padding: EdgeInsets.all(padding),
       decoration: BoxDecoration(
-        color: Colors.white,
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Colors.white, Color(0xFFF1F5EE)],
+        ),
         borderRadius: BorderRadius.circular(16),
         boxShadow: const [
-          BoxShadow(color: Color(0xFFDEDBCF), offset: Offset(0, 4)),
+          BoxShadow(color: Color(0xFFD9D6C8), offset: Offset(0, 5)),
           BoxShadow(color: Color(0x2214532D), offset: Offset(0, 12), blurRadius: 20),
         ],
       ),
@@ -46,13 +50,42 @@ class HeroHeader extends StatelessWidget {
           end: Alignment.bottomRight,
           colors: [Color(0xFF0C2F1B), Color(0xFF1C7A43)],
         ),
+        borderRadius: BorderRadius.vertical(bottom: Radius.circular(24)),
+        boxShadow: [
+          BoxShadow(color: Color(0xFF0A2D18), offset: Offset(0, 5)),
+          BoxShadow(color: Color(0x4414532D), offset: Offset(0, 14), blurRadius: 20),
+        ],
       ),
       padding: const EdgeInsets.fromLTRB(16, 18, 16, 20),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Text('Know the fair price before you pay.',
-            style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w800, height: 1.1)),
-        const SizedBox(height: 4),
-        const Text('Official prices from the DTI and DA', style: TextStyle(color: Color(0xFFD3E8D9))),
+        Row(children: [
+          Transform(
+            alignment: Alignment.center,
+            transform: Matrix4.identity()
+              ..setEntry(3, 2, 0.002)
+              ..rotateY(-0.35)
+              ..rotateX(0.12),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: const [BoxShadow(color: Color(0x66000000), offset: Offset(0, 8), blurRadius: 14)],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: Image.asset('assets/icon.png', width: 62, height: 62),
+              ),
+            ),
+          ),
+          const SizedBox(width: 14),
+          const Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Know the fair price before you pay.',
+                  style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800, height: 1.1)),
+              SizedBox(height: 4),
+              Text('Official prices from the DTI and DA', style: TextStyle(color: Color(0xFFD3E8D9))),
+            ]),
+          ),
+        ]),
         if (picks.isNotEmpty) ...[
           const SizedBox(height: 14),
           Row(children: [

@@ -1,39 +1,25 @@
-import { PointerEvent, useEffect, useRef, useState } from "react";
-import { api, PriceRow } from "../api";
-import { peso } from "../format";
+import { useEffect, useState } from "react";
+import { Hero3D, useTilt } from "./Hero3D";
 import { PriceBoard } from "./PriceBoard";
 
 const REPO = "galangec24/grocery-app";
 const APK_URL = `https://github.com/${REPO}/releases/latest/download/grocery-price-finder.apk`;
-const HERO_ITEMS = ["Premium Rice, Local", "Tilapia", "Saba Philippines Sardines", "Chicken Egg (White, Medium)"];
 
 export function Landing() {
-  const [hero, setHero] = useState<PriceRow[]>([]);
+  const { scene, tilt } = useTilt();
   const [apkReady, setApkReady] = useState(false);
-  const scene = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    api<{ results: PriceRow[] }>("/market/prices")
-      .then((r) => setHero(HERO_ITEMS.flatMap((name) => r.results.find((row) => row.commodity === name) ?? [])))
-      .catch(() => setHero([]));
     fetch(`https://api.github.com/repos/${REPO}/releases/latest`)
       .then((r) => setApkReady(r.ok))
       .catch(() => setApkReady(false));
   }, []);
 
-  function tilt(event: PointerEvent<HTMLDivElement>) {
-    const box = event.currentTarget.getBoundingClientRect();
-    const x = (event.clientX - box.left) / box.width - 0.5;
-    const y = (event.clientY - box.top) / box.height - 0.5;
-    scene.current?.style.setProperty("--ry", `${x * 16}deg`);
-    scene.current?.style.setProperty("--rx", `${-y * 12}deg`);
-  }
-
   return (
     <div className="site">
       <div className="hero-wrap" onPointerMove={tilt}>
         <header className="site-nav">
-          <a className="brand" href="#/"><span className="brand-mark">₱</span> Grocery Price Finder</a>
+          <a className="brand" href="#/"><img className="brand-mark" src="./logo.png" alt="" /> Grocery Price Finder</a>
           <nav>
             <a href="#/shop">Open app</a>
             <a href="#/dashboard">Dashboard</a>
@@ -53,17 +39,7 @@ export function Landing() {
               {apkReady && <a className="btn ghost" href={APK_URL}>Download for Android</a>}
             </div>
           </div>
-          <div className="scene" ref={scene} aria-hidden={hero.length === 0}>
-            <div className="stack">
-              {hero.map((row, index) => (
-                <article className="float-card" key={row.id} style={{ "--i": index } as React.CSSProperties}>
-                  <span>{row.kind === "srp" ? "DTI standard price" : "DA market price"}</span>
-                  <strong>{row.commodity}</strong>
-                  <em>{peso(row.price)}<small> / {row.unit}</small></em>
-                </article>
-              ))}
-            </div>
-          </div>
+          <Hero3D scene={scene} />
         </section>
       </div>
 

@@ -287,6 +287,27 @@ td.muted { white-space: normal; }
 .store-totals a { color: inherit; font-weight: 600; text-decoration: none; }
 .store-totals .price { grid-column: 2; grid-row: 1 / span 2; align-self: center; }
 
+/* App pages get the same depth as the homepage */
+.shop-hero { position: relative; margin: 0 -1px; padding: 14px 18px 56px; color: #fff; overflow: hidden; border-radius: 0 0 26px 26px; background: radial-gradient(760px 340px at 82% 8%, #2a8a52 0%, transparent 65%), linear-gradient(160deg, #0c2f1b, #14532d 60%, #0b2616); box-shadow: 0 6px 0 #0a2d18, 0 18px 30px rgba(10, 45, 24, .28); }
+.shop-hero .brand { color: #fff; }
+.shop-hero-body { display: grid; grid-template-columns: 1fr minmax(0, 1.2fr); gap: 16px; align-items: center; margin-top: 10px; }
+.shop-hero h1 { font-size: 2rem; text-shadow: 0 4px 14px rgba(0, 0, 0, .35); }
+.shop-hero .scene { min-height: 230px; }
+.shop-hero .stack { height: 230px; }
+.shop-hero .float-card { top: calc(var(--i) * 66px); left: calc(var(--i) * 18px); width: min(290px, 92%); padding: 10px 14px; }
+.shop-page { margin-top: -30px; position: relative; }
+.shop-page > .board > .panel:first-child { margin-top: 0; }
+.tabs { background: rgba(255, 255, 255, .94); backdrop-filter: blur(8px); border: 0; box-shadow: 0 -8px 22px rgba(20, 83, 45, .14); border-radius: 22px 22px 0 0; padding: 6px 10px calc(6px + env(safe-area-inset-bottom)); }
+.tabs a { border-radius: 14px; transition: transform .15s, background .15s; }
+.tabs a.on { color: #fff; background: linear-gradient(160deg, #1c7a43, #0f4023); box-shadow: 0 3px 0 #0a2d18, 0 8px 14px rgba(10, 45, 24, .3); transform: translateY(-3px); }
+table.prices tbody tr { transition: transform .14s, box-shadow .14s; }
+table.prices tbody tr:hover { transform: translateY(-2px) scale(1.004); box-shadow: 0 10px 18px rgba(20, 83, 45, .13); position: relative; }
+.btn.primary { box-shadow: 0 4px 0 #0a2d18, 0 10px 16px rgba(10, 45, 24, .22); }
+.btn.primary:active { transform: translateY(3px); box-shadow: 0 1px 0 #0a2d18; }
+.mini { box-shadow: 0 2px 0 #d9d6c8; }
+.mini:active { transform: translateY(2px); box-shadow: none; }
+.brand-mark { object-fit: cover; }
+
 @media (max-width: 800px) {
   .hero, .two-col { grid-template-columns: 1fr; }
   .hero { padding: 16px 22px 96px; gap: 26px; }
@@ -294,13 +315,15 @@ td.muted { white-space: normal; }
   .stack { height: 300px; }
   .tiles3d, .tiles { grid-template-columns: 1fr 1fr; }
   .controls { grid-template-columns: 1fr; }
+  .shop-hero-body { grid-template-columns: 1fr; }
+  .shop-hero { padding-bottom: 46px; }
   .retailers { flex-direction: column; align-items: flex-start; }
   .bar-row { grid-template-columns: 1fr 40px; }
   .bar-row .bar { grid-column: 1 / -1; grid-row: 2; }
   .table-wrap { max-height: none; overflow: visible; }
   table.prices thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
   table.prices, table.prices tbody, table.prices tr { display: block; }
-  table.prices tr { padding: 12px 2px; border-bottom: 1px solid var(--line); display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; }
+  table.prices tr { padding: 12px; margin-bottom: 10px; border-radius: 14px; background: linear-gradient(160deg, #fff, #f6f8f2); box-shadow: 0 3px 0 #e1decf, 0 10px 16px rgba(20, 83, 45, .1); display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; }
   table.prices td { display: block; padding: 0; border: 0; }
   table.prices td[data-label="Category"], table.prices td[data-label="Trend"] { display: none; }
   table.prices td[data-label="Price"] { grid-column: 2; grid-row: 1; }

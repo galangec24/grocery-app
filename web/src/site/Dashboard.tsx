@@ -67,7 +67,7 @@ export function Dashboard() {
   return (
     <div className="site dash">
       <header className="site-nav">
-        <a className="brand" href="#/"><span className="brand-mark">₱</span> Grocery Price Finder</a>
+        <a className="brand" href="#/"><img className="brand-mark" src="./logo.png" alt="" /> Grocery Price Finder</a>
         <nav>
           <a href="#/shop">Open app</a>
           {signedIn && <button className="link" onClick={() => { adminSession.clear(); setSignedIn(false); }}>Sign out</button>}

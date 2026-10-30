@@ -20,6 +20,11 @@ export function Sparkline({ values }: { values: number[] }) {
   );
 }
 
+const percent = (value: number | null) => {
+  const size = Math.abs(value ?? 0);
+  return size < 0.1 ? "under 0.1%" : `${size}%`;
+};
+
 export function Change({ row }: { row: PriceRow }) {
   if (row.kind === "srp") return <span className="pill srp">Official SRP</span>;
   if (row.change === null) return <span className="muted">New</span>;
@@ -27,7 +32,7 @@ export function Change({ row }: { row: PriceRow }) {
   const up = row.change > 0;
   return (
     <span className={up ? "up" : "down"}>
-      {up ? "▲" : "▼"} {peso(Math.abs(row.change))} ({Math.abs(row.change_pct ?? 0)}%)
+      {up ? "▲" : "▼"} {peso(Math.abs(row.change))} ({percent(row.change_pct)})
     </span>
   );
 }
