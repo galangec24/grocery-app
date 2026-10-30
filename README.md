@@ -25,6 +25,10 @@ Prices are as live as these publications, not minute by minute. **No public sour
 Location therefore finds the shopper's real city, lists its malls and supermarkets from OpenStreetMap, and
 applies the SRPs for that island group. Store-specific prices arrive when retailers connect through the dashboard.
 
+Products outside these lists, such as Mega Sardines, Piatos, pet food, appliances and perfume, come from a built-in brand catalog in `backend/app/catalog.py`. It holds names and sizes only. Shoppers enter the shelf price themselves, and administrators can add products from the dashboard.
+
+Drafts, the budget and saved purchases stay on the device, so they need no account but don't move between devices.
+
 ## Automation
 
 | Trigger | What happens |
@@ -81,6 +85,6 @@ Open http://127.0.0.1:8000. Tests: `.venv\Scripts\python -m pytest tests`. Live 
 | Celery + Redis | Background loop in the API process | Optional for an MVP in the documentation |
 | Database constraints | Validation in the import paths | MongoDB has no `CHECK` constraints; unique indexes are enforced |
 
-Not built yet: real retailer API or POS connectors (CSV import works), barcode scanning, price alerts.
+Not built yet: real retailer API or POS connectors (CSV import works), barcode scanning, price alerts, and shopper accounts for syncing between devices.
 
 On Render's free plan the API sleeps when idle, so the first request after a quiet spell can take about a minute.

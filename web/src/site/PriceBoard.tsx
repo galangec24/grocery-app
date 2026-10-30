@@ -3,8 +3,10 @@ import { api, CatalogItem, MarketSummary, PriceRow, query } from "../api";
 import { addItems, newDraft, readDrafts, saveDraft } from "../drafts";
 import { longDate, mapUrl, peso } from "../format";
 import { useLocation } from "../location";
+import { ModalSubject, PriceModal } from "./PriceModal";
 
 type SortKey = "commodity" | "price" | "change_pct";
+const PAGE_SIZE = 25;
 
 export function Sparkline({ values }: { values: number[] }) {
   if (values.length < 2) return <span className="muted">No history yet</span>;
@@ -105,6 +107,8 @@ export function PriceBoard({ compact }: { compact?: boolean }) {
   const [sort, setSort] = useState<{ key: SortKey; up: boolean } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [added, setAdded] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [subject, setSubject] = useState<ModalSubject | null>(null);
   const [catalog, setCatalog] = useState<CatalogItem[]>([]);
   const island = city?.island;
 
@@ -149,6 +153,10 @@ export function PriceBoard({ compact }: { compact?: boolean }) {
     return catalog.filter((item) => words.every((w) => item.keywords.includes(w) || (w.endsWith("s") && item.keywords.includes(w.slice(0, -1)))));
   }, [catalog, term]);
 
+  useEffect(() => setPage(1), [term, source, category, sort, island]);
+  const pages = Math.max(1, Math.ceil(shown.length / PAGE_SIZE));
+  const visible = shown.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
   const toggle = (key: SortKey) => setSort((s) => ({ key, up: s?.key === key ? !s.up : key !== "change_pct" }));
   const arrow = (key: SortKey) => (sort?.key === key ? (sort.up ? " ↑" : " ↓") : "");
   const aria = (key: SortKey) => (sort?.key === key ? (sort.up ? "ascending" : "descending") : "none");
@@ -184,7 +192,7 @@ export function PriceBoard({ compact }: { compact?: boolean }) {
 
       <section className="panel table-panel">
         <div className="controls">
-          <input type="search" value={term} onChange={(e) => setTerm(e.target.value)} placeholder="Search rice, Mega Sardines, Piatos, junk food…" aria-label="Search prices" />
+          <input type="search" value={term} onChange={(e) => setTerm(e.target.value)} placeholder="Search rice, Piatos, dog food, perfume, rice cooker…" aria-label="Search prices" />
           <select value={source} aria-label="Price type" onChange={(e) => { setSource(e.target.value); setCategory(""); }}>
             <option value="">All prices</option>
             <option value="dti_srp">Standard price (DTI SRP)</option>
@@ -205,10 +213,12 @@ export function PriceBoard({ compact }: { compact?: boolean }) {
             <p className="hint">These brands have no official price yet. Add one to your draft and enter the shelf price.</p>
             <div className="brand-grid">
               {brands.slice(0, 24).map((item) => (
-                <article className="brand-card" key={item.id}>
+                <article className="brand-card clickable" key={item.id} tabIndex={0}
+                  onClick={() => setSubject({ kind: "brand", item })}
+                  onKeyDown={(e) => { if (e.key === "Enter") setSubject({ kind: "brand", item }); }}>
                   <strong>{item.name}</strong>
                   <small>{item.size} · {item.category}</small>
-                  <button className="mini" onClick={() => addBrand(item)} disabled={added === item.id}>{added === item.id ? "Added" : "Add to draft"}</button>
+                  <button className="mini" onClick={(e) => { e.stopPropagation(); addBrand(item); }} disabled={added === item.id}>{added === item.id ? "Added" : "Add to draft"}</button>
                 </article>
               ))}
             </div>
@@ -231,8 +241,10 @@ export function PriceBoard({ compact }: { compact?: boolean }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {shown.slice(0, 250).map((row) => (
-                    <tr key={row.id}>
+                  {visible.map((row) => (
+                    <tr key={row.id} className="clickable" tabIndex={0} aria-label={`${row.commodity}, ${peso(row.price)}. Open details`}
+                      onClick={() => setSubject({ kind: "price", row })}
+                      onKeyDown={(e) => { if (e.key === "Enter") setSubject({ kind: "price", row }); }}>
                       <td data-label="Item"><strong>{row.commodity}</strong>{row.specification && <small>{row.specification}</small>}</td>
                       <td data-label="Category">{row.category}</td>
                       <td data-label="Price" className="num"><span className="price">{peso(row.price)}</span><small>per {row.unit}</small></td>
@@ -240,17 +252,31 @@ export function PriceBoard({ compact }: { compact?: boolean }) {
                       <td data-label="Trend" className="trend-cell">{row.kind === "srp" ? <span className="muted">Fixed by bulletin</span> : <Sparkline values={row.trend} />}</td>
                       <td data-label="Applies to">{row.region}</td>
                       <td className="row-add">
-                        <button className="mini" onClick={() => addToDraft(row)} disabled={added === row.id}>{added === row.id ? "Added" : "Add to draft"}</button>
+                        <button className="mini" onClick={(e) => { e.stopPropagation(); addToDraft(row); }} disabled={added === row.id}>{added === row.id ? "Added" : "Add to draft"}</button>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-            {shown.length > 250 && <p className="hint pad">Showing the first 250. Search to narrow the list.</p>}
+            {pages > 1 && (
+              <nav className="pager" aria-label="Pages">
+                <button className="mini" disabled={page === 1} onClick={() => setPage(1)}>First</button>
+                <button className="mini" disabled={page === 1} onClick={() => setPage(page - 1)}>Previous</button>
+                <span>Page <b>{page}</b> of {pages}</span>
+                <button className="mini" disabled={page === pages} onClick={() => setPage(page + 1)}>Next</button>
+                <button className="mini" disabled={page === pages} onClick={() => setPage(pages)}>Last</button>
+              </nav>
+            )}
           </>
         )}
       </section>
+
+      {subject && (
+        <PriceModal subject={subject} onClose={() => setSubject(null)}
+          added={added === (subject.kind === "price" ? subject.row.id : subject.item.id)}
+          onAdd={() => (subject.kind === "price" ? addToDraft(subject.row) : addBrand(subject.item))} />
+      )}
 
       {summary && (
         <section className="sources">

@@ -210,7 +210,7 @@ def _rank(row: dict, tokens: list[str]) -> tuple:
     return (not all(t in name for t in tokens), row["kind"] != "srp" and len(name) > 30, len(name), row["price"])
 
 
-def basket(rows: list[dict], items: list[dict]) -> dict:
+def basket(rows: list[dict], items: list[dict], products: list[dict] | None = None) -> dict:
     """Cost a list. Official prices first, then the shopper's own shelf prices.
 
     A product in the brand catalog has no official price, so it stays out of the total
@@ -223,7 +223,7 @@ def basket(rows: list[dict], items: list[dict]) -> dict:
         custom = item.get("custom_price")
         matched = sorted(search(rows, query), key=lambda r: _rank(r, cmp.tokenize(query)))
         chosen = by_id.get(item.get("price_id")) or (matched[0] if matched else None)
-        brand = catalog.search(query)
+        brand = catalog.search(query, products)
         status = "no_match"
         unit_centavos = 0
         label = query

@@ -1,6 +1,7 @@
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { adminSession, api, ApiError, postJson } from "../api";
 import { peso, STATUS_META, timeAgo } from "../format";
+import { AdminTools } from "./AdminTools";
 
 interface Retailer {
   id: string;
@@ -112,6 +113,7 @@ function Console({ onExpired }: { onExpired: () => void }) {
   const [quality, setQuality] = useState<Quality | null>(null);
   const [audit, setAudit] = useState<Audit[]>([]);
   const [reports, setReports] = useState<Report[]>([]);
+  const [systemAdmin, setSystemAdmin] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -132,6 +134,9 @@ function Console({ onExpired }: { onExpired: () => void }) {
   }, [onExpired]);
 
   useEffect(() => {
+    api<{ roles: { role: string }[] }>("/users/me", {}, true)
+      .then((me) => setSystemAdmin(me.roles.some((r) => r.role === "system_admin")))
+      .catch(() => setSystemAdmin(false));
     load();
     const timer = setInterval(load, 30000);
     return () => clearInterval(timer);
@@ -200,9 +205,11 @@ function Console({ onExpired }: { onExpired: () => void }) {
         </div>
       </section>
 
+      {systemAdmin && <AdminTools onChanged={load} />}
+
       {overview.retailers.length === 0 && (
         <section className="card">
-          <h2>Retailers</h2>
+          <h2>Retailer integrations</h2>
           <p className="muted">No retailers have connected yet. Their shelf prices, integrations and sync history will appear here.</p>
         </section>
       )}

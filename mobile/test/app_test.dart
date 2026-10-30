@@ -6,6 +6,7 @@ import 'package:grocery_price_finder/api.dart';
 import 'package:grocery_price_finder/calculator.dart';
 import 'package:grocery_price_finder/drafts.dart';
 import 'package:grocery_price_finder/main.dart';
+import 'package:grocery_price_finder/purchases.dart';
 import 'package:grocery_price_finder/state.dart';
 import 'package:grocery_price_finder/updates.dart';
 import 'package:http/http.dart' as http;
@@ -167,6 +168,41 @@ void main() {
     await state.setBudget(null);
     await state.loadBudget();
     expect(state.budget, isNull);
+  });
+
+  group('reports', () {
+    Purchase bought(DateTime date, double total) =>
+        Purchase(name: 'Trip', date: date, total: total, lines: const []);
+
+    test('periods cover whole months and step back correctly', () {
+      final now = DateTime(2026, 1, 15);
+      final last3 = ReportPeriod.lastMonths(3, now);
+      expect(last3.start, DateTime(2025, 11));
+      expect(last3.previous.start, DateTime(2025, 8));
+      expect(last3.contains(DateTime(2026, 1, 31)), isTrue);
+      expect(last3.contains(DateTime(2026, 2, 1)), isFalse);
+    });
+
+    test('totals follow the chosen range', () {
+      final purchases = [
+        bought(DateTime(2026, 10, 2), 100),
+        bought(DateTime(2026, 10, 20), 50),
+        bought(DateTime(2026, 9, 5), 75),
+      ];
+      final october = ReportPeriod(DateTime(2026, 10), 1);
+      expect(sumTotal(october.select(purchases)), 150);
+      expect(sumTotal(october.previous.select(purchases)), 75);
+      expect(totalsByMonth(ReportPeriod(DateTime(2026, 9), 2), purchases).values, [75, 150]);
+    });
+
+    test('purchases persist', () async {
+      final store = PurchaseStore();
+      await store.save(bought(DateTime(2026, 10, 2), 100));
+      final saved = await store.read();
+      expect(saved.single.total, 100);
+      await store.delete(saved.single.id);
+      expect(await store.read(), isEmpty);
+    });
   });
 
   test('peso formatting', () {

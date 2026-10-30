@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../api.dart';
 import '../calculator.dart';
 import '../drafts.dart';
+import '../purchases.dart';
 import '../receipt.dart';
 import '../state.dart';
 
@@ -110,6 +111,36 @@ class _ListEditorState extends State<ListEditor> {
     _changed();
   }
 
+  Future<void> _savePurchase() async {
+    final basket = _basket;
+    if (basket == null) return;
+    final messenger = ScaffoldMessenger.of(context);
+    final date = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now(),
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now(),
+      helpText: 'Date of purchase',
+    );
+    if (date == null) return;
+    await PurchaseStore().save(Purchase(
+      name: _draft.name.isEmpty ? 'Shopping trip' : _draft.name,
+      date: date,
+      total: basket.total,
+      lines: [
+        for (final line in basket.lines)
+          if (line.status == 'matched' || line.status == 'custom')
+            PurchaseLine(
+              name: line.status == 'custom' ? line.query : line.label,
+              quantity: line.quantity,
+              unitPrice: line.unitPrice,
+              lineTotal: line.lineTotal,
+            ),
+      ],
+    ));
+    messenger.showSnackBar(const SnackBar(content: Text('Saved to Reports')));
+  }
+
   Future<void> _openCalculator() async {
     final added = await showModalBottomSheet<CalculatorResult>(
       context: context,
@@ -154,6 +185,14 @@ class _ListEditorState extends State<ListEditor> {
       const SizedBox(height: 14),
       ReceiptCard(draft: _draft, basket: basket),
       const SizedBox(height: 12),
+      if (basket != null && basket.total > 0) ...[
+        FilledButton.icon(
+          onPressed: _savePurchase,
+          icon: const Icon(Icons.bookmark_add_outlined),
+          label: const Text('Save this purchase'),
+        ),
+        const SizedBox(height: 8),
+      ],
       OutlinedButton.icon(
         onPressed: _openCalculator,
         icon: const Icon(Icons.calculate_outlined),

@@ -79,9 +79,9 @@ def market_prices(
 
 
 @router.get("/market/catalog")
-def market_catalog():
+def market_catalog(db: Database = Depends(get_db)):
     """Brand names and sizes for search. Holds no prices."""
-    return [{k: item[k] for k in ("id", "name", "brand", "category", "size", "keywords")} for item in catalog.CATALOG]
+    return [{k: item[k] for k in ("id", "name", "brand", "category", "size", "keywords")} for item in catalog.full(db)]
 
 
 class BasketItem(BaseModel):
@@ -105,7 +105,7 @@ class BasketRequest(BaseModel):
 
 @router.post("/market/basket", dependencies=[Depends(limit_search)])
 def market_basket(body: BasketRequest, db: Database = Depends(get_db)):
-    return market.basket(market.price_rows(db, None, body.island), [i.model_dump() for i in body.items])
+    return market.basket(market.price_rows(db, None, body.island), [i.model_dump() for i in body.items], catalog.full(db))
 
 
 @router.get("/location/resolve", dependencies=[Depends(limit_search)])

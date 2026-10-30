@@ -2,14 +2,15 @@
 from collections import Counter, defaultdict
 from statistics import median
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field, field_validator
 from pymongo.database import Database
 
+from . import catalog, market
 from . import comparison as cmp
 from .config import MAX_CSV_BYTES
 from .db import get_db, new_id, utcnow
-from .security import audit, current_user, require_org, require_system_admin, scope_filter
+from .security import audit, current_user, hash_password, require_org, require_system_admin, scope_filter
 from .sync import AdapterError, CsvAdapter, adapter_for, run_sync
 
 router = APIRouter(prefix="/api/v1/admin")
@@ -140,6 +141,128 @@ def market_reports(user: dict = Depends(current_user), db: Database = Depends(ge
         }
         for r in db.market_reports.find().sort("checked_at", -1).limit(20)
     ]
+
+
+ROLES = {"system_admin", "mall_admin", "supervisor", "integration_admin"}
+
+
+def account_json(user: dict, names: dict[str, str]) -> dict:
+    """Everything an administrator may see. The password hash is never included."""
+    return {
+        "id": user["_id"], "email": user["email"], "full_name": user["full_name"], "status": user["status"],
+        "roles": [
+            {"role": r["role"], "organization": names.get(r.get("organization_id"))} for r in user["roles"]
+        ],
+        "created_at": cmp.iso(user.get("created_at")),
+    }
+
+
+class UserCreate(BaseModel):
+    email: str = Field(min_length=5, max_length=200, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+    full_name: str = Field(min_length=2, max_length=200)
+    password: str = Field(min_length=12, max_length=200)
+    role: str
+    organization_id: str | None = None
+
+
+class UserUpdate(BaseModel):
+    status: str | None = Field(None, pattern="^(active|suspended)$")
+    password: str | None = Field(None, min_length=12, max_length=200)
+
+
+@router.get("/users")
+def list_users(user: dict = Depends(require_system_admin), db: Database = Depends(get_db)):
+    names = org_names(db)
+    return [account_json(u, names) for u in db.users.find().sort("email", 1)]
+
+
+@router.post("/users", status_code=201)
+def create_user(body: UserCreate, user: dict = Depends(require_system_admin), db: Database = Depends(get_db)):
+    if body.role not in ROLES:
+        raise HTTPException(422, "Unknown role")
+    if body.role != "system_admin" and db.organizations.find_one({"_id": body.organization_id}) is None:
+        raise HTTPException(422, "Choose a retailer for this role")
+    email = body.email.strip().lower()
+    if db.users.find_one({"email": email}):
+        raise HTTPException(409, "An account with this email already exists")
+    account = {
+        "_id": new_id(), "email": email, "full_name": body.full_name.strip(),
+        "password_hash": hash_password(body.password), "status": "active", "created_at": utcnow(),
+        "roles": [{"role": body.role, "organization_id": None if body.role == "system_admin" else body.organization_id}],
+    }
+    db.users.insert_one(account)
+    audit(db, user, "user.created", account["roles"][0]["organization_id"], f"{email} as {body.role}")
+    return account_json(account, org_names(db))
+
+
+@router.patch("/users/{user_id}")
+def update_user(
+    user_id: str, body: UserUpdate, user: dict = Depends(require_system_admin), db: Database = Depends(get_db),
+):
+    account = db.users.find_one({"_id": user_id})
+    if account is None:
+        raise HTTPException(404, "User not found")
+    if body.status == "suspended" and user_id == user["_id"]:
+        raise HTTPException(409, "You can't suspend your own account")
+    changes = {}
+    if body.status:
+        changes["status"] = body.status
+    if body.password:
+        changes["password_hash"] = hash_password(body.password)
+    if changes:
+        db.users.update_one({"_id": user_id}, {"$set": changes})
+        account.update(changes)
+    # The password itself is never written to the audit log.
+    audit(db, user, "user.updated", None, f'{account["email"]}: {", ".join(sorted(k.replace("_hash", "") for k in changes))}')
+    return account_json(account, org_names(db))
+
+
+@router.get("/organizations")
+def list_organizations(user: dict = Depends(require_system_admin), db: Database = Depends(get_db)):
+    return [
+        {"id": o["_id"], "name": o["name"], "status": o["status"],
+         "stores": db.stores.count_documents({"organization_id": o["_id"]})}
+        for o in db.organizations.find().sort("name", 1)
+    ]
+
+
+class CatalogCreate(BaseModel):
+    name: str = Field(min_length=2, max_length=160)
+    brand: str = Field(min_length=1, max_length=80)
+    category: str = Field(min_length=2, max_length=80)
+    size: str = Field(min_length=1, max_length=40)
+
+
+@router.get("/catalog")
+def admin_catalog(user: dict = Depends(require_system_admin), db: Database = Depends(get_db)):
+    return catalog.custom_items(db)
+
+
+@router.post("/catalog", status_code=201)
+def add_catalog_item(body: CatalogCreate, user: dict = Depends(require_system_admin), db: Database = Depends(get_db)):
+    doc = {"_id": f"custom:{new_id()}", **body.model_dump(), "created_at": utcnow()}
+    db.catalog_items.insert_one(doc)
+    audit(db, user, "catalog.added", None, f'{doc["name"]} {doc["size"]}')
+    return {"id": doc["_id"]}
+
+
+@router.delete("/catalog/{item_id}")
+def delete_catalog_item(item_id: str, user: dict = Depends(require_system_admin), db: Database = Depends(get_db)):
+    doc = db.catalog_items.find_one({"_id": item_id})
+    if doc is None:
+        raise HTTPException(404, "Catalog item not found")
+    db.catalog_items.delete_one({"_id": item_id})
+    audit(db, user, "catalog.removed", None, doc["name"])
+    return {"deleted": True}
+
+
+@router.post("/market/refresh", status_code=202)
+def refresh_market(
+    tasks: BackgroundTasks, user: dict = Depends(require_system_admin), db: Database = Depends(get_db),
+):
+    tasks.add_task(market.ingest, db)
+    audit(db, user, "market.refresh_requested")
+    return {"started": True}
 
 
 class OrganizationCreate(BaseModel):

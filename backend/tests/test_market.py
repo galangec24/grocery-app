@@ -200,7 +200,10 @@ def test_basket_user_can_pick_exact_size(loaded, client):
     assert pinned["lines"][0]["selected"]["id"] == other["id"] and pinned["total"] == other["price"]
 
 
-@pytest.mark.parametrize("query", ["mega sardines", "piatos", "junk food", "nova", "chips"])
+@pytest.mark.parametrize("query", [
+    "mega sardines", "piatos", "junk food", "nova", "chips", "utensils", "appliances", "rice cooker",
+    "dog food", "cat food", "pet", "perfume", "cologne", "diapers",
+])
 def test_brands_outside_official_lists_are_searchable(client, query):
     items = client.get("/api/v1/market/catalog").json()
     tokens = query.split()

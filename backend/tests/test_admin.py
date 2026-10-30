@@ -215,3 +215,66 @@ def test_prices_convert_to_exact_centavos(client, db, admin, value, centavos):
     store, listing, integration = setup(db)
     upload(client, integration, HEADER + f"{store['_id']},{listing['retailer_product_id']},{value},PHP,available\n", admin)
     assert price_of(db, listing) == centavos
+
+
+NEW_USER = dict(email="new@example.com", full_name="New Person", password="a-long-password", role="system_admin")
+
+
+def test_admin_creates_and_lists_users_without_hashes(client, admin):
+    assert client.post("/api/v1/admin/users", json=NEW_USER, headers=admin).status_code == 201
+    users = client.get("/api/v1/admin/users", headers=admin).json()
+    assert "new@example.com" in {u["email"] for u in users}
+    assert all("password_hash" not in u for u in users)
+
+
+def test_user_rules(client, db, admin, supervisor):
+    url = "/api/v1/admin/users"
+    assert client.get(url, headers=supervisor).status_code == 403
+    assert client.post(url, json=NEW_USER, headers=supervisor).status_code == 403
+    assert client.post(url, json={**NEW_USER, "password": "short"}, headers=admin).status_code == 422
+    assert client.post(url, json={**NEW_USER, "role": "owner"}, headers=admin).status_code == 422
+    assert client.post(url, json={**NEW_USER, "role": "supervisor"}, headers=admin).status_code == 422
+    client.post(url, json=NEW_USER, headers=admin)
+    assert client.post(url, json={**NEW_USER, "email": "NEW@example.com"}, headers=admin).status_code == 409
+
+
+def test_suspended_user_cannot_sign_in_or_use_old_token(client, db, admin, supervisor):
+    target = db.users.find_one({"email": "supervisor@demo.local"})
+    assert client.patch(f"/api/v1/admin/users/{target['_id']}", json={"status": "suspended"}, headers=admin).status_code == 200
+    assert client.get("/api/v1/users/me", headers=supervisor).status_code == 401
+    login = {"email": "supervisor@demo.local", "password": "demo-password"}
+    assert client.post("/api/v1/auth/login", json=login).status_code == 401
+
+
+def test_admin_cannot_suspend_themselves(client, db, admin):
+    me = client.get("/api/v1/users/me", headers=admin).json()
+    assert client.patch(f"/api/v1/admin/users/{me['id']}", json={"status": "suspended"}, headers=admin).status_code == 409
+
+
+def test_password_reset_is_audited_without_the_password(client, db, admin):
+    target = db.users.find_one({"email": "supervisor@demo.local"})
+    client.patch(f"/api/v1/admin/users/{target['_id']}", json={"password": "a-brand-new-password"}, headers=admin)
+    entry = db.audit_logs.find_one({"action": "user.updated"})
+    assert "brand-new" not in entry["detail"] and "password" in entry["detail"]
+    login = {"email": "supervisor@demo.local", "password": "a-brand-new-password"}
+    assert client.post("/api/v1/auth/login", json=login).status_code == 200
+
+
+def test_admin_catalog_item_becomes_searchable_and_removable(client, admin, supervisor):
+    item = dict(name="Local Brand Tuyo", brand="Local Brand", category="Dried Fish", size="100g")
+    url = "/api/v1/admin/catalog"
+    assert client.post(url, json=item, headers=supervisor).status_code == 403
+    created = client.post(url, json=item, headers=admin).json()
+    assert "Local Brand Tuyo" in {c["name"] for c in client.get("/api/v1/market/catalog").json()}
+    line = client.post("/api/v1/market/basket", json={"items": [{"query": "local brand tuyo"}]}).json()["lines"][0]
+    assert line["status"] == "needs_price"
+    assert client.delete(f"{url}/{created['id']}", headers=admin).status_code == 200
+    assert "Local Brand Tuyo" not in {c["name"] for c in client.get("/api/v1/market/catalog").json()}
+
+
+def test_only_system_admin_refreshes_prices(client, admin, supervisor, monkeypatch):
+    calls = []
+    monkeypatch.setattr("app.admin.market.ingest", lambda db: calls.append(1))
+    assert client.post("/api/v1/admin/market/refresh", headers=supervisor).status_code == 403
+    assert client.post("/api/v1/admin/market/refresh", headers=admin).status_code == 202
+    assert calls == [1]

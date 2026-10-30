@@ -3,6 +3,7 @@ import { BasketLine, BasketResponse, postJson } from "../api";
 import { useBudget } from "../budget";
 import { addItems, deleteDraft, Draft, DraftItem, duplicateDraft, MAX_ITEMS, newDraft, parseItems, readDrafts, saveDraft, useDrafts } from "../drafts";
 import { peso } from "../format";
+import { savePurchase } from "../purchases";
 import { useLocation } from "../location";
 import { navigate } from "../router";
 import { Calculator } from "./Calculator";
@@ -112,8 +113,10 @@ function ListEditor({ draft, onChange, bulk, header, footer }: {
   draft: Draft; onChange: (draft: Draft) => void; bulk?: boolean; header?: React.ReactNode; footer?: React.ReactNode;
 }) {
   const { city } = useLocation();
-  const { setSpent } = useBudget();
+  const { budget, setSpent } = useBudget();
   const [text, setText] = useState("");
+  const [purchaseDate, setPurchaseDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [savedTrip, setSavedTrip] = useState(false);
   const [result, setResult] = useState<BasketResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -184,6 +187,17 @@ function ListEditor({ draft, onChange, bulk, header, footer }: {
     }
   }
 
+  function saveTrip() {
+    if (!result) return;
+    savePurchase({
+      name: draft.name || "Shopping trip", date: purchaseDate, total: result.total, budget,
+      lines: result.lines
+        .filter((l) => l.status === "matched" || l.status === "custom")
+        .map((l) => ({ name: l.status === "custom" ? l.query : l.label, quantity: l.quantity, unitPrice: l.unit_price, lineTotal: l.line_total })),
+    });
+    setSavedTrip(true);
+  }
+
   const lineFor = (item: DraftItem) => result?.lines.find((l) => l.query === item.query);
   const full = draft.items.length >= MAX_ITEMS;
   const inCart = draft.items.some((i) => i.checked)
@@ -252,6 +266,14 @@ function ListEditor({ draft, onChange, bulk, header, footer }: {
 
       <aside className="side">
         <Receipt draft={draft} data={result} inCart={inCart} />
+        {result && result.total > 0 && (
+          <div className="save-trip">
+            <label>Date of purchase
+              <input type="date" value={purchaseDate} onChange={(e) => { setPurchaseDate(e.target.value); setSavedTrip(false); }} />
+            </label>
+            <button className="btn primary" disabled={savedTrip} onClick={saveTrip}>{savedTrip ? "Saved to Reports" : "Save this purchase"}</button>
+          </div>
+        )}
         {draft.items.length > 0 && (
           <div className="receipt-actions">
             <button className="btn" onClick={() => window.print()}>Print</button>

@@ -83,6 +83,62 @@ _PRODUCTS = {
             ("Magic Sarap", "Seasoning Mix", "8g"), ("Maggi", "Savor", "130ml"), ("Lady's Choice", "Mayonnaise", "220ml"),
         ],
     },
+    "Kitchenware & Utensils": {
+        "aliases": "utensils kitchen cookware plates spoon fork pot pan",
+        "items": [
+            ("Tramontina", "Stainless Spoon and Fork Set", "12 pcs"), ("Tefal", "Non-Stick Frying Pan", "24 cm"),
+            ("Tefal", "Non-Stick Cooking Pot", "20 cm"), ("Zebra", "Stainless Cooking Pot", "22 cm"),
+            ("Lock & Lock", "Food Storage Container", "1L"), ("Corelle", "Dinner Plate", "26 cm"),
+            ("Pyrex", "Glass Baking Dish", "2L"), ("Tupperware", "Water Bottle", "1L"),
+            ("Masflex", "Pressure Cooker", "6L"), ("Oxo", "Kitchen Knife", "20 cm"),
+        ],
+    },
+    "Appliances": {
+        "aliases": "electronics home appliance",
+        "items": [
+            ("Hanabishi", "Electric Stand Fan", "16 inch"), ("Asahi", "Electric Fan", "16 inch"),
+            ("Kyowa", "Rice Cooker", "1.8L"), ("Imarflex", "Induction Cooker", "1 unit"),
+            ("Panasonic", "Steam Iron", "1 unit"), ("Oster", "Blender", "1.25L"),
+            ("Samsung", "Microwave Oven", "23L"), ("American Home", "Electric Kettle", "1.7L"),
+            ("Condura", "Inverter Refrigerator", "7 cu ft"), ("Philips", "Air Fryer", "4.1L"),
+        ],
+    },
+    "Pet Supplies": {
+        "aliases": "pets animal dog cat puppy kitten feeds",
+        "items": [
+            ("Pedigree", "Adult Beef Dog Food", "1.5kg"), ("Pedigree", "Puppy Chicken Dog Food", "1.3kg"),
+            ("Pedigree", "Beef Pouch Dog Food", "130g"), ("Vitality", "Value Meal Dog Food", "3kg"),
+            ("Royal Canin", "Medium Adult Dog Food", "4kg"), ("Whiskas", "Ocean Fish Cat Food", "1.2kg"),
+            ("Whiskas", "Tuna Cat Food Pouch", "85g"), ("Friskies", "Seafood Sensations Cat Food", "1.1kg"),
+            ("Royal Canin", "Indoor Cat Food", "2kg"), ("Cosi", "Pet Milk", "200ml"),
+            ("Bioline", "Dog Shampoo", "250ml"), ("Pet Republic", "Cat Litter", "10L"),
+        ],
+    },
+    "Perfume & Fragrance": {
+        "aliases": "cologne scent deodorant body spray",
+        "items": [
+            ("Bench", "Daily Scent Eau de Toilette", "75ml"), ("Bench", "Atlantis Body Spray", "150ml"),
+            ("Penshoppe", "Eau de Toilette", "75ml"), ("Axe", "Dark Temptation Body Spray", "150ml"),
+            ("Dove", "Roll-On Deodorant", "40ml"), ("Rexona", "Roll-On Deodorant", "40ml"),
+            ("Johnson's", "Baby Cologne", "100ml"), ("Enchanteur", "Charming Body Mist", "75ml"),
+            ("Avon", "Far Away Eau de Parfum", "50ml"),
+        ],
+    },
+    "Baby Needs": {
+        "aliases": "diapers infant formula",
+        "items": [
+            ("Pampers", "Baby Dry Diapers Medium", "40 pcs"), ("Huggies", "Dry Pants Medium", "32 pcs"),
+            ("EQ", "Dry Diapers Medium", "40 pcs"), ("Cerelac", "Rice and Soy Infant Cereal", "120g"),
+            ("Enfagrow", "A+ Powdered Milk", "1.5kg"), ("Johnson's", "Baby Powder", "200g"),
+        ],
+    },
+    "School & Office": {
+        "aliases": "supplies stationery",
+        "items": [
+            ("Panda", "Ballpen Black", "1 pc"), ("Mongol", "Pencil No. 2", "12 pcs"), ("Veco", "Spiral Notebook", "80 leaves"),
+            ("Pilot", "Permanent Marker", "1 pc"), ("Elmer's", "Glue All", "130g"),
+        ],
+    },
     "Personal Care & Household": {
         "aliases": "soap shampoo toiletries",
         "items": [
@@ -110,6 +166,19 @@ def _build() -> list[dict]:
 CATALOG = _build()
 
 
-def search(query: str) -> list[dict]:
+def custom_items(db) -> list[dict]:
+    """Products administrators added, shaped like the built-in catalog."""
+    return [
+        {"id": d["_id"], "name": d["name"], "brand": d["brand"], "category": d["category"], "size": d["size"],
+         "keywords": f'{d["name"]} {d["size"]} {d["category"]}'.lower()}
+        for d in db.catalog_items.find().sort("name", 1)
+    ]
+
+
+def full(db) -> list[dict]:
+    return CATALOG + custom_items(db)
+
+
+def search(query: str, items: list[dict] | None = None) -> list[dict]:
     tokens = cmp.tokenize(query)
-    return [item for item in CATALOG if tokens and cmp.matches(tokens, item["keywords"])]
+    return [item for item in (items or CATALOG) if tokens and cmp.matches(tokens, item["keywords"])]

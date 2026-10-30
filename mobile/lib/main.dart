@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'screens/drafts_screen.dart';
 import 'screens/multi_screen.dart';
 import 'screens/prices_screen.dart';
+import 'screens/reports_screen.dart';
 import 'state.dart';
 import 'updates.dart';
 import 'widgets.dart';
@@ -55,7 +56,7 @@ class _HomeShellState extends State<HomeShell> {
     });
   }
 
-  static const _pages = [PricesScreen(), MultiScreen(), DraftsScreen()];
+  static const _pages = [PricesScreen(), MultiScreen(), DraftsScreen(), ReportsScreen()];
 
   @override
   Widget build(BuildContext context) {
@@ -77,6 +78,7 @@ class _HomeShellState extends State<HomeShell> {
               NavigationRailDestination(icon: Icon(Icons.sell_outlined), label: Text('Prices')),
               NavigationRailDestination(icon: Icon(Icons.checklist), label: Text('My list')),
               NavigationRailDestination(icon: Icon(Icons.edit_note), label: Text('Drafts')),
+              NavigationRailDestination(icon: Icon(Icons.bar_chart), label: Text('Reports')),
             ],
           ),
           Expanded(child: page),
@@ -92,6 +94,7 @@ class _HomeShellState extends State<HomeShell> {
           NavigationDestination(icon: Icon(Icons.sell_outlined), label: 'Prices'),
           NavigationDestination(icon: Icon(Icons.checklist), label: 'My list'),
           NavigationDestination(icon: Icon(Icons.edit_note), label: 'Drafts'),
+          NavigationDestination(icon: Icon(Icons.bar_chart), label: 'Reports'),
         ],
       ),
     );

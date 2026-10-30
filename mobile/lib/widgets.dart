@@ -211,6 +211,79 @@ class _PressTiltState extends State<PressTilt> {
   }
 }
 
+/// Full details of one official price.
+Future<void> showPriceDetails(BuildContext context, PriceRow row, VoidCallback onAdd) {
+  return showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+    builder: (context) => SafeArea(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
+          Text(row.isSrp ? 'Official standard price' : 'Daily market price',
+              style: const TextStyle(color: Color(0xFF1C7A43), fontWeight: FontWeight.w700)),
+          Text(row.commodity, style: Theme.of(context).textTheme.headlineSmall),
+          if (row.specification.isNotEmpty) Text(row.specification),
+          const SizedBox(height: 8),
+          Text('${peso(row.price)} per ${row.unit}',
+              style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w800, color: Color(0xFF14532D))),
+          if (row.change != null && row.change != 0)
+            Text('${row.change! > 0 ? '▲' : '▼'} ${peso(row.change!.abs())} since the last report'),
+          if (row.trend.length > 1) ...[
+            const SizedBox(height: 10),
+            SizedBox(height: 90, child: CustomPaint(painter: TrendPainter(row.trend))),
+            Text('Last ${row.trend.length} reports', style: Theme.of(context).textTheme.bodySmall),
+          ],
+          const SizedBox(height: 10),
+          Text('Category: ${row.category}'),
+          Text('Applies to: ${row.region}'),
+          Text('Source: ${row.sourceLabel}'),
+          Text('Report date: ${row.reportDate}'),
+          const SizedBox(height: 14),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(context);
+              onAdd();
+            },
+            child: const Text('Add to draft'),
+          ),
+        ]),
+      ),
+    ),
+  );
+}
+
+class TrendPainter extends CustomPainter {
+  TrendPainter(this.values);
+
+  final List<double> values;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final low = values.reduce((a, b) => a < b ? a : b);
+    final high = values.reduce((a, b) => a > b ? a : b);
+    final span = high - low == 0 ? 1 : high - low;
+    final path = Path();
+    for (var i = 0; i < values.length; i++) {
+      final x = i / (values.length - 1) * size.width;
+      final y = size.height - 6 - (values[i] - low) / span * (size.height - 12);
+      i == 0 ? path.moveTo(x, y) : path.lineTo(x, y);
+    }
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = const Color(0xFF1C7A43)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.5
+        ..strokeCap = StrokeCap.round,
+    );
+  }
+
+  @override
+  bool shouldRepaint(TrendPainter oldDelegate) => oldDelegate.values != values;
+}
+
 class PriceCard extends StatelessWidget {
   const PriceCard({super.key, required this.row, required this.onAdd});
 
@@ -221,7 +294,10 @@ class PriceCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final change = row.change;
     return PressTilt(
-      child: Card3d(
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => showPriceDetails(context, row, onAdd),
+        child: Card3d(
       padding: 12,
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Expanded(
@@ -258,6 +334,7 @@ class PriceCard extends StatelessWidget {
           ),
         ]),
       ]),
+        ),
       ),
     );
   }

@@ -2,20 +2,23 @@ import { BudgetBar, BudgetProvider } from "../budget";
 import { Hero3D, useTilt } from "../site/Hero3D";
 import { PriceBoard } from "../site/PriceBoard";
 import { DraftEditor, DraftList, QuickCompare } from "./Drafts";
+import { Reports } from "./Reports";
 
 const TABS = [
   ["/shop", "Prices", "₱"],
   ["/shop/compare", "My list", "☰"],
   ["/shop/drafts", "Drafts", "✎"],
+  ["/shop/reports", "Reports", "▤"],
 ];
 
-const TITLES: Record<string, string> = { compare: "Build your list", drafts: "Your drafts" };
+const TITLES: Record<string, string> = { compare: "Build your list", drafts: "Your drafts", reports: "Spending reports" };
 
 export function Shop({ path }: { path: string }) {
   const [, , section, id] = path.split("/");
   const { scene, tilt } = useTilt();
   let page;
   if (section === "compare") page = <QuickCompare />;
+  else if (section === "reports") page = <Reports />;
   else if (section === "drafts") page = id ? <DraftEditor key={id} id={id} /> : <DraftList />;
   else page = <PriceBoard compact />;
 

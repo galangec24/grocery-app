@@ -111,7 +111,7 @@ class _PricesScreenState extends State<PricesScreen> {
               controller: _search,
               onChanged: (_) => setState(() {}),
               decoration: const InputDecoration(
-                hintText: 'Search rice, Mega Sardines, Piatos…',
+                hintText: 'Search rice, Piatos, dog food, perfume…',
                 prefixIcon: Icon(Icons.search),
                 border: OutlineInputBorder(),
               ),
