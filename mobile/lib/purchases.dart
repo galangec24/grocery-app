@@ -61,7 +61,7 @@ class PurchaseStore {
     return purchases;
   }
 
-  Future<void> save(Purchase purchase) => _write([purchase, ...await read()]);
+  Future<void> save(Purchase purchase) async => _write([purchase, ...await read()]);
 
   Future<void> delete(String id) async => _write((await read()).where((p) => p.id != id).toList());
 
