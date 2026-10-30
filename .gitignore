@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.venv/
+__pycache__/
+.pytest_cache/
+.env
+.env.production
+.firebase/
+web/android/app/build/
+web/android/build/
+web/android/.gradle/
+*.keystore

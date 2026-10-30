@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+pymongo
+mongomock
+pyjwt
+python-multipart
+pytest
+httpx
