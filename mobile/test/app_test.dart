@@ -54,6 +54,8 @@ AppState fakeState() => AppState(
     );
 
 void main() {
+  setUp(() => SharedPreferences.setMockInitialValues({}));
+
   group('parseItems', () {
     test('reads lines and commas', () {
       final items = parseItems('rice\neggs, sardines');
