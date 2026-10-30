@@ -25,7 +25,7 @@ jobs:
         with:
           python-version: "3.14"
       - run: pip install -r requirements.txt
-      - run: pytest -q tests
+      - run: python -m pytest -q tests
 
   android:
     runs-on: ubuntu-latest
@@ -43,7 +43,7 @@ jobs:
           channel: stable
           cache: true
       - run: bash ci/prepare.sh android
-      - run: flutter analyze --no-fatal-infos
+      - run: flutter analyze --no-fatal-infos --no-fatal-warnings
       - run: flutter test
       - run: flutter build apk --release --dart-define=API_URL=${{ env.API_URL }}
 

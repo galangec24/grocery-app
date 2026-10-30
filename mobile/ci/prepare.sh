@@ -16,4 +16,5 @@ else
   /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName 'Grocery Price Finder'" "$plist"
 fi
 
+rm -f test/widget_test.dart  # The template test targets a demo app that does not exist here.
 flutter pub get

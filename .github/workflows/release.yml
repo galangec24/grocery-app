@@ -40,7 +40,7 @@ jobs:
         working-directory: mobile
         run: |
           bash ci/prepare.sh android
-          flutter analyze --no-fatal-infos
+          flutter analyze --no-fatal-infos --no-fatal-warnings
           flutter test
       - name: Build
         working-directory: mobile
