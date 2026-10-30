@@ -84,7 +84,7 @@ def test_basket_totals_real_prices():
 
 
 def test_snacks_have_two_sizes():
-    sizes = {item["variant"] for item in get("/market/catalog") if "Piatos Cheese" in item["name"]}
+    sizes = {item["variant"] for item in get("/market/catalog", q="piatos cheese") if item["variant"]}
     assert sizes == {"Small", "Large"}
 
 
@@ -94,5 +94,5 @@ def test_road_route_between_two_cebu_points():
 
 
 def test_brand_catalog_finds_piatos_and_mega():
-    names = " ".join(item["name"] for item in get("/market/catalog"))
-    assert "Piatos" in names and "Mega Sardines" in names
+    assert any("Piatos" in item["name"] for item in get("/market/catalog", q="piatos"))
+    assert any("Mega Sardines" in item["name"] for item in get("/market/catalog", q="mega sardines"))
