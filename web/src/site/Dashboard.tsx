@@ -1,5 +1,5 @@
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
-import { adminSession, api, ApiError, postJson, PriceStatus, Stats } from "../api";
+import { adminSession, api, ApiError, postJson } from "../api";
 import { peso, STATUS_META, timeAgo } from "../format";
 
 interface Retailer {
@@ -41,12 +41,24 @@ interface Quality {
   price_discrepancies: { store: string; product: string; package_size: string; price: number; median_price: number }[];
 }
 
+interface Report {
+  source: string;
+  status: string;
+  report_date: string | null;
+  rows: number;
+  error: string | null;
+  checked_at: string;
+  url: string;
+}
+
 interface Audit {
   action: string;
   actor: string | null;
   detail: string | null;
   created_at: string;
 }
+
+export type PriceStatus = "fresh" | "aging" | "stale" | "unavailable" | "unknown";
 
 const ORDER: PriceStatus[] = ["fresh", "aging", "stale", "unavailable", "unknown"];
 
@@ -70,11 +82,6 @@ function Login({ onDone }: { onDone: () => void }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [demo, setDemo] = useState(false);
-
-  useEffect(() => {
-    api<Stats>("/stats").then((s) => setDemo(s.public_demo_login)).catch(() => undefined);
-  }, []);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -95,12 +102,6 @@ function Login({ onDone }: { onDone: () => void }) {
       <label>Password<input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" /></label>
       {error && <p className="error" role="alert">{error}</p>}
       <button className="btn primary" type="submit">Sign in</button>
-      {demo && (
-        <p className="hint">
-          Sample accounts: <code>admin@demo.local</code> sees everything, <code>supervisor@demo.local</code> sees
-          only Sample Mart. Password: <code>demo-password</code>
-        </p>
-      )}
     </form>
   );
 }
@@ -110,18 +111,20 @@ function Console({ onExpired }: { onExpired: () => void }) {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [quality, setQuality] = useState<Quality | null>(null);
   const [audit, setAudit] = useState<Audit[]>([]);
+  const [reports, setReports] = useState<Report[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const [o, j, q, a] = await Promise.all([
+      const [o, j, q, a, r] = await Promise.all([
         api<Overview>("/admin/overview", {}, true),
         api<Job[]>("/admin/sync-jobs?limit=12", {}, true),
         api<Quality>("/admin/data-quality", {}, true),
         api<Audit[]>("/admin/audit-logs", {}, true),
+        api<Report[]>("/admin/market-reports", {}, true),
       ]);
-      setOverview(o); setJobs(j); setQuality(q); setAudit(a); setError(null);
+      setOverview(o); setJobs(j); setQuality(q); setAudit(a); setReports(r); setError(null);
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) onExpired();
       else setError((e as Error).message);
@@ -164,7 +167,7 @@ function Console({ onExpired }: { onExpired: () => void }) {
       </div>
       {notice && <p className="notice" role="status">{notice}</p>}
 
-      <section className="tiles">
+      {overview.listings > 0 && <section className="tiles">
         <Tile label="Listings tracked" value={overview.listings.toLocaleString()} note={`${overview.products} products, ${overview.stores} branches`} />
         <Tile label="Comparable prices" value={`${share}%`} note="Fresh or aging; the rest are not ranked" />
         <Tile label="Stale prices" value={overview.freshness.stale.toLocaleString()} note="Hidden from default results" />
@@ -174,12 +177,40 @@ function Console({ onExpired }: { onExpired: () => void }) {
           note={overview.integrations_failed ? "Prices kept; shown as stale when too old" : "All connections healthy"}
           alert={overview.integrations_failed > 0}
         />
-      </section>
+      </section>}
 
       <section className="card">
+        <h2>Official price collection</h2>
+        <div className="table-scroll">
+          <table>
+            <thead><tr><th>Source</th><th>Report date</th><th className="num">Rows</th><th>Result</th><th>Checked</th><th>Note</th></tr></thead>
+            <tbody>
+              {reports.map((r) => (
+                <tr key={r.url}>
+                  <td><a href={r.url} target="_blank" rel="noreferrer">{r.source === "dti_srp" ? "DTI SRP" : "DA Daily Price Index"}</a></td>
+                  <td>{r.report_date ?? "–"}</td>
+                  <td className="num">{r.rows}</td>
+                  <td><Health status={r.status === "ok" ? "succeeded" : r.status} /></td>
+                  <td>{timeAgo(r.checked_at)}</td>
+                  <td className="muted">{r.error}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      {overview.retailers.length === 0 && (
+        <section className="card">
+          <h2>Retailers</h2>
+          <p className="muted">No retailers have connected yet. Their shelf prices, integrations and sync history will appear here.</p>
+        </section>
+      )}
+
+      {overview.retailers.length > 0 && <section className="card">
         <h2>Price freshness by retailer</h2>
         <FreshnessChart retailers={overview.retailers} />
-      </section>
+      </section>}
 
       <section className="card">
         <h2>Integrations</h2>

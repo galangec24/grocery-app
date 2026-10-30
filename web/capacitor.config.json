@@ -1,8 +1,0 @@
-{
-  "appId": "com.groceryprice.finder",
-  "appName": "Grocery Price Finder",
-  "webDir": "dist",
-  "server": {
-    "androidScheme": "https"
-  }
-}

@@ -4,9 +4,10 @@ services:
     runtime: python
     plan: free
     rootDir: backend
+    autoDeployTrigger: commit
     buildCommand: pip install -r requirements.txt
     # Proxy headers give the rate limiter the real client IP. One worker keeps the
-    # in-process limiter and demo feed loop single-instance.
+    # in-process limiter and price collection loop single-instance.
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips "*"
     healthCheckPath: /api/v1/health
     envVars:
@@ -17,11 +18,10 @@ services:
       - key: MONGODB_DB
         value: grocery
       - key: CORS_ORIGINS
-        sync: false
+        value: https://grocery-app-71cfd.web.app,https://grocery-app-71cfd.firebaseapp.com
       - key: SECRET_KEY
         generateValue: true
-      # Replaces the well-known local password on every deployed instance.
-      - key: DEMO_PASSWORD
+      - key: ADMIN_EMAIL
+        value: admin@grocery-app.ph
+      - key: ADMIN_PASSWORD
         generateValue: true
-      - key: DEMO_MODE
-        value: "true"

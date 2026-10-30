@@ -2,7 +2,6 @@
 import csv
 import io
 import logging
-import random
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation
@@ -52,36 +51,7 @@ class CsvAdapter(RetailerAdapter):
             raise AdapterError("File is not valid UTF-8 CSV")
 
 
-class DemoFeedAdapter(RetailerAdapter):
-    """Simulated retailer API over the sample data; a few prices move on each run."""
-
-    def __init__(self, db: Database, integration: dict, outage: bool = False):
-        self.db, self.integration, self.outage = db, integration, outage
-
-    def fetch(self) -> list[dict]:
-        if self.outage:
-            raise AdapterError("Retailer API did not respond (simulated outage)")
-        store_ids = [s["_id"] for s in self.db.stores.find({"organization_id": self.integration["organization_id"]})]
-        rows = []
-        for listing in self.db.store_products.find({"store_id": {"$in": store_ids}}):
-            price = listing["price_centavos"]
-            if random.random() < 0.08:
-                price = max(100, price + random.choice([-1, 1]) * 50 * random.randint(1, 6))
-            rows.append({
-                "store_id": listing["store_id"],
-                "retailer_product_id": listing["retailer_product_id"],
-                "price": str(Decimal(price) / 100),
-                "currency": listing["currency"],
-                "availability": listing["availability_status"],
-            })
-        return rows
-
-
 def adapter_for(db: Database, integration: dict) -> RetailerAdapter | None:
-    if integration["provider_name"] == "demo-feed":
-        return DemoFeedAdapter(db, integration)
-    if integration["provider_name"] == "demo-feed-outage":
-        return DemoFeedAdapter(db, integration, outage=True)
     return None  # REST/POS connectors subclass RetailerAdapter once a retailer authorizes access.
 
 
@@ -214,16 +184,3 @@ def run_sync(db: Database, integration: dict, adapter: RetailerAdapter) -> dict:
         db.retailer_integrations.update_one({"_id": integration["_id"]}, {"$set": {"status": "failed"}})
         integration["status"] = "failed"
     return job
-
-
-def run_due_demo_syncs(db: Database) -> None:
-    now = utcnow()
-    integrations = list(db.retailer_integrations.find({
-        "provider_name": {"$regex": "^demo-feed"}, "status": {"$ne": "disabled"},
-    }))
-    for integration in integrations:
-        adapter = adapter_for(db, integration)
-        last_job = db.sync_jobs.find_one({"integration_id": integration["_id"]}, sort=[("started_at", -1)])
-        interval = timedelta(minutes=integration["sync_interval_minutes"])
-        if adapter and (last_job is None or now - last_job["started_at"] >= interval):
-            run_sync(db, integration, adapter)

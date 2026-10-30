@@ -1,78 +1,86 @@
 # Grocery Price Finder
 
-Compare grocery prices across supermarkets, save shopping drafts, and search many items at once.
-Built from `Documentation.docx`.
+Official Philippine grocery prices, multi-item search and shopping drafts.
+
+- **Website:** https://grocery-app-71cfd.web.app
+- **Android:** [latest APK](https://github.com/galangec24/grocery-app/releases/latest/download/grocery-price-finder.apk)
 
 | Part | Technology | Hosted on |
 | --- | --- | --- |
-| `backend/` API, ranking, sync, admin | Python FastAPI | Render |
+| `backend/` API, price collection, admin | Python FastAPI | Render |
 | Database | MongoDB | MongoDB Atlas |
-| `web/` introduction, dashboard, shopper app | React + Vite | Firebase Hosting |
-| `web/android/` APK (same code as the shopper app) | Capacitor | Direct download |
+| `web/` price board, shopper app, dashboard | React + Vite | Firebase Hosting |
+| `mobile/` phone and tablet app | Flutter, with Kotlin (Android) and Swift (iOS) hosts | GitHub Releases |
 
-All data shown is fictional sample data until a real retailer is connected.
+## Where the prices come from
+
+No sample data ships with the app. Every price keeps its source link and report date.
+
+| Source | What it is | Coverage | Updated |
+| --- | --- | --- | --- |
+| [DTI SRP bulletin](https://www.dti.gov.ph/konsyumer/latest-srps-basic-necessities-prime-commoditie) | Official standard price of branded goods | Nationwide, supermarkets and wet markets, unless the item says otherwise | When the DTI issues a bulletin |
+| [DA Daily Price Index](https://www.da.gov.ph/price-monitoring/) | Average price seen in covered wet markets | Metro Manila | Daily |
+
+Prices are as live as these publications, not minute by minute. **No public source gives prices per mall.**
+Location therefore finds the shopper's real city, lists its malls and supermarkets from OpenStreetMap, and
+applies the SRPs for that island group. Store-specific prices arrive when retailers connect through the dashboard.
+
+## Automation
+
+| Trigger | What happens |
+| --- | --- |
+| Push to `main` | Tests run on all parts, the Android and iOS apps compile, the website publishes to Firebase, and Render redeploys the backend |
+| Push a `v*.*.*` tag | The APK is built, signed and published as a GitHub Release |
+| Four times a day | Live checks run against production. This wakes the Render service, which collects any new reports |
+
+Reports are collected in batches: each run stores up to 14 new daily reports, and a report that fails validation is skipped so the last good prices stay live.
+
+## Releasing an app update
+
+```powershell
+.\scripts\release.ps1 1.1.0 "Added price alerts`nFaster search"
+```
+
+The notes become the "What's new" text. The app checks GitHub on launch, shows **Update available** with those notes, and shows **What's new** once after updating. Android asks the shopper to confirm the install, and "Install unknown apps" must be allowed for their browser.
+
+Keep `C:\Users\Emmanuel Christian\grocery-app-signing\` backed up somewhere safe and private. If the signing key is lost, phones can't update and every user has to reinstall.
+
+## One-time setup
+
+**GitHub secrets** (Settings > Secrets and variables > Actions):
+
+| Secret | Value |
+| --- | --- |
+| `ANDROID_KEYSTORE_BASE64` | Contents of `ANDROID_KEYSTORE_BASE64.txt` in the signing folder |
+| `ANDROID_KEYSTORE_PASSWORD` | Contents of `ANDROID_KEYSTORE_PASSWORD.txt` in the signing folder |
+| `FIREBASE_SERVICE_ACCOUNT` | The JSON from Firebase console > Project settings > Service accounts > Generate new private key |
+
+**Render:** set `MONGODB_URI` once. Everything else comes from `render.yaml`. The dashboard login is `admin@grocery-app.ph` with `ADMIN_PASSWORD` from the Environment tab.
+
+**iPhone:** the app compiles for iOS on every push. Publishing needs an Apple Developer account and a signing setup.
 
 ## Run locally
 
-Without `MONGODB_URI` the backend uses an in-memory database, so no install is needed, but data resets on restart.
+Without `MONGODB_URI` the backend uses an in-memory database that resets on restart.
 
 ```powershell
-cd web; npm install; npm run build; cd ..
-cd backend
+cd web; npm install; npm run build; cd ..\backend
 python -m venv .venv
 .venv\Scripts\python -m pip install -r requirements.txt
 .venv\Scripts\python -m uvicorn app.main:app --port 8000
 ```
 
-- Website: http://127.0.0.1:8000
-- Shopper app: http://127.0.0.1:8000/#/shop
-- Dashboard: http://127.0.0.1:8000/#/dashboard (`admin@demo.local` or `supervisor@demo.local`, password `demo-password`, local only)
-- API docs: http://127.0.0.1:8000/api/docs
-- Tests: `cd backend; .venv\Scripts\python -m pytest`
-
-## Deploy
-
-**1. MongoDB Atlas.** Create a free cluster and a database user, and copy the `mongodb+srv://` connection string.
-Allow network access from `0.0.0.0/0`, because Render's free tier has no fixed outbound IP.
-
-**2. Render.** Push this project to GitHub, then choose New > Blueprint and select the repo; it reads `render.yaml`. When prompted, set:
-
-- `MONGODB_URI`: the Atlas connection string
-- `CORS_ORIGINS`: `https://YOUR-PROJECT.web.app,https://YOUR-PROJECT.firebaseapp.com,https://localhost`
-  (`https://localhost` is what lets the APK connect)
-
-`SECRET_KEY` and `DEMO_PASSWORD` are generated for you. Find `DEMO_PASSWORD` under the service's Environment tab; that is the dashboard password online.
-
-**3. Firebase Hosting.** Copy `web/.env.production.example` to `web/.env.production` and enter your Render URL. Then:
-
-```powershell
-cd web; npm run build; cd ..
-npx firebase-tools login
-npx firebase-tools use --add
-npx firebase-tools deploy --only hosting
-```
-
-**4. APK.** With `web/.env.production` in place:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts\setup-android-toolchain.ps1   # once; about 2.5 GB in C:\dev
-powershell -ExecutionPolicy Bypass -File scripts\build-apk.ps1
-```
-
-The APK lands in `web/public/downloads/`. Redeploy Firebase and the website's download button turns on.
-It is debug-signed, which suits testing. Create a release keystore before distributing it widely.
+Open http://127.0.0.1:8000. Tests: `.venv\Scripts\python -m pytest tests`. Live checks: `pytest live_tests`.
 
 ## Where this differs from the documentation
 
 | Documentation | Built | Why |
 | --- | --- | --- |
-| PostgreSQL + PostGIS | MongoDB | Project decision. Distance is calculated in Python for now; stores already hold GeoJSON points for a `2dsphere` index once catalogs grow. |
-| Flutter | Capacitor + React | Far smaller Android toolchain, and one codebase for the web and the APK. |
-| Celery + Redis | Background loop in the API process | The documentation marks these optional for an MVP. The loop only runs the simulated feeds. |
-| Database constraints | Validation in the single import path | MongoDB has no `CHECK` constraints. Only the unique indexes are enforced by the database. |
+| PostgreSQL + PostGIS | MongoDB | Project decision |
+| Store-level price comparison | Official price board, with store comparison kept in the backend | No store-level data exists until retailers join |
+| Celery + Redis | Background loop in the API process | Optional for an MVP in the documentation |
+| Database constraints | Validation in the import paths | MongoDB has no `CHECK` constraints; unique indexes are enforced |
 
-Added beyond the documentation's first release: drafts, multi-item search and basket totals.
+Not built yet: real retailer API or POS connectors (CSV import works), barcode scanning, price alerts.
 
-Not built yet: real retailer API or POS connectors (only CSV import and simulated feeds), promotions, barcode scanning, and a screen for managing users. Rate limiting is per-process.
-
-On Render's free plan the API sleeps when idle, so the first request after a quiet spell can take about a minute, and simulated feeds pause while it sleeps.
+On Render's free plan the API sleeps when idle, so the first request after a quiet spell can take about a minute.

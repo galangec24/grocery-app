@@ -4,10 +4,8 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from pymongo.database import Database
 
 from . import comparison as cmp
-from .config import (
-    DEMO_MODE, DEMO_PASSWORD_IS_PUBLIC, LOGIN_RATE_PER_MINUTE, MAX_MULTI_SEARCH_ITEMS,
-    NEARBY_RADIUS_KM, SEARCH_RATE_PER_MINUTE,
-)
+from . import location, market
+from .config import LOGIN_RATE_PER_MINUTE, MAX_MULTI_SEARCH_ITEMS, NEARBY_RADIUS_KM, SEARCH_RATE_PER_MINUTE
 from .db import get_db, utcnow
 from .security import RateLimiter, current_user, issue_token, read_token, verify_password
 
@@ -55,9 +53,68 @@ def stats(db: Database = Depends(get_db)):
     return {
         "retailers": db.organizations.count_documents({}), "stores": db.stores.count_documents({}),
         "products": db.products.count_documents({}), "listings": db.store_products.count_documents({}),
-        "sample_data": DEMO_MODE,
-        "public_demo_login": DEMO_MODE and DEMO_PASSWORD_IS_PUBLIC,
     }
+
+
+Island = Query(None, pattern="^(Luzon|Visayas|Mindanao)$")
+
+
+@router.get("/market/summary")
+def market_summary(db: Database = Depends(get_db)):
+    return market.summary(db)
+
+
+@router.get("/market/prices", dependencies=[Depends(limit_search)])
+def market_prices(
+    q: str = Query("", max_length=120),
+    source: str | None = Query(None, pattern="^(dti_srp|da_dpi)$"),
+    category: str | None = Query(None, max_length=120),
+    island: str | None = Island,
+    db: Database = Depends(get_db),
+):
+    rows = market.search(market.price_rows(db, source, island), q)
+    if category:
+        rows = [r for r in rows if r["category"] == category]
+    return {"count": len(rows), "results": rows, "generated_at": cmp.iso(utcnow())}
+
+
+class BasketItem(BaseModel):
+    query: str = Field(min_length=1, max_length=120)
+    quantity: int = Field(1, ge=1, le=999)
+    price_id: str | None = Field(None, max_length=300)
+
+    @field_validator("query")
+    @classmethod
+    def not_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("query must not be blank")
+        return value.strip()
+
+
+class BasketRequest(BaseModel):
+    items: list[BasketItem] = Field(min_length=1, max_length=MAX_MULTI_SEARCH_ITEMS)
+    island: str | None = Field(None, pattern="^(Luzon|Visayas|Mindanao)$")
+
+
+@router.post("/market/basket", dependencies=[Depends(limit_search)])
+def market_basket(body: BasketRequest, db: Database = Depends(get_db)):
+    return market.basket(market.price_rows(db, None, body.island), [i.model_dump() for i in body.items])
+
+
+@router.get("/location/resolve", dependencies=[Depends(limit_search)])
+def resolve_location(
+    latitude: float | None = Latitude,
+    longitude: float | None = Longitude,
+    city: str | None = Query(None, min_length=2, max_length=80),
+    db: Database = Depends(get_db),
+):
+    need_both(latitude, longitude)
+    if latitude is None and not city:
+        raise HTTPException(422, "Send a location or a city name")
+    try:
+        return location.resolve(db, latitude, longitude, city)
+    except location.LocationError as error:
+        raise HTTPException(503, str(error))
 
 
 @router.get("/categories")

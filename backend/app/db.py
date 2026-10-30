@@ -45,6 +45,8 @@ def ensure_indexes(db: Database) -> None:
     db.retailer_integrations.create_index("organization_id")
     db.sync_jobs.create_index([("integration_id", ASCENDING), ("started_at", ASCENDING)])
     db.audit_logs.create_index("created_at")
+    db.market_prices.create_index([("source", ASCENDING), ("report_date", ASCENDING)])
+    db.market_prices.create_index("key")
 
 
 def supports_transactions() -> bool:

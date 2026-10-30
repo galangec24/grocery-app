@@ -7,23 +7,22 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from . import admin, api
-from .config import BASE_DIR, CORS_ORIGINS, DEMO_MODE
+from . import admin, api, market
+from .bootstrap import ensure_admin, purge_sample_data
+from .config import BASE_DIR, CORS_ORIGINS, FETCH_MARKET_DATA, MARKET_CHECK_SECONDS
 from .db import USING_MOCK, database, ensure_indexes
-from .seed import seed
-from .sync import run_due_demo_syncs
 
 log = logging.getLogger("grocery")
 WEB_DIST: Path = BASE_DIR.parent / "web" / "dist"
 
 
-async def demo_feed_loop():
+async def market_loop():
     while True:
-        await asyncio.sleep(60)
         try:
-            await asyncio.to_thread(run_due_demo_syncs, database)
+            await asyncio.to_thread(market.ingest, database)
         except Exception:
-            log.exception("demo feed run failed")
+            log.exception("market data check failed")
+        await asyncio.sleep(MARKET_CHECK_SECONDS)
 
 
 @asynccontextmanager
@@ -31,16 +30,15 @@ async def lifespan(_: FastAPI):
     if USING_MOCK:
         log.warning("Using the in-memory database; data is lost on restart. Set MONGODB_URI to keep it.")
     ensure_indexes(database)
-    task = None
-    if DEMO_MODE:
-        seed(database)
-        task = asyncio.create_task(demo_feed_loop())
+    purge_sample_data(database)
+    ensure_admin(database)
+    task = asyncio.create_task(market_loop()) if FETCH_MARKET_DATA else None
     yield
     if task:
         task.cancel()
 
 
-app = FastAPI(title="Grocery Price Finder API", version="1.0.0", lifespan=lifespan,
+app = FastAPI(title="Grocery Price Finder API", version="2.0.0", lifespan=lifespan,
               docs_url="/api/docs", openapi_url="/api/openapi.json")
 app.add_middleware(CORSMiddleware, allow_origins=CORS_ORIGINS, allow_methods=["*"], allow_headers=["*"])
 app.include_router(api.router)

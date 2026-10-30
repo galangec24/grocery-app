@@ -3,7 +3,22 @@ import io
 
 import pytest
 
-from app.sync import DemoFeedAdapter, run_sync
+from app.sync import AdapterError, RetailerAdapter, run_sync
+
+class FakeFeed(RetailerAdapter):
+    def __init__(self, db, integration, outage=False):
+        self.db, self.integration, self.outage = db, integration, outage
+
+    def fetch(self):
+        if self.outage:
+            raise AdapterError("Retailer API did not respond (simulated outage)")
+        return []
+
+
+@pytest.fixture(autouse=True)
+def fake_connector(monkeypatch):
+    monkeypatch.setattr("app.admin.adapter_for", lambda db, i: FakeFeed(db, i, i["provider_name"].endswith("outage")))
+
 
 HEADER = "store_id,retailer_product_id,price,currency,availability\n"
 
@@ -168,7 +183,7 @@ def test_ac12_ac15_outage_keeps_prices_and_is_retryable(client, db, admin):
     assert price_of(db, listing) == listing["price_centavos"]
     integration = db.retailer_integrations.find_one({"_id": integration["_id"]})
     assert integration["status"] == "failed"
-    retry = run_sync(db, integration, DemoFeedAdapter(db, integration))
+    retry = run_sync(db, integration, FakeFeed(db, integration))
     assert retry["status"] == "succeeded"
     assert db.retailer_integrations.find_one({"_id": integration["_id"]})["status"] == "active"
 
@@ -193,12 +208,6 @@ def test_overview_counts_add_up(client, admin):
 def test_login_is_rate_limited(client):
     codes = [client.post("/api/v1/auth/login", json={"email": "x@y.z", "password": "n"}).status_code for _ in range(11)]
     assert codes[-1] == 429
-
-
-def test_public_demo_login_flag_hides_when_password_is_set(client, monkeypatch):
-    assert client.get("/api/v1/stats").json()["public_demo_login"] is True
-    monkeypatch.setattr("app.api.DEMO_PASSWORD_IS_PUBLIC", False)
-    assert client.get("/api/v1/stats").json()["public_demo_login"] is False
 
 
 @pytest.mark.parametrize("value,centavos", [("10", 1000), ("10.5", 1050), ("0.07", 7)])

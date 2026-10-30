@@ -6,7 +6,11 @@ __pycache__/
 .env
 .env.production
 .firebase/
-web/android/app/build/
-web/android/build/
-web/android/.gradle/
+mobile/android/
+mobile/ios/
+mobile/.dart_tool/
+mobile/build/
+mobile/.metadata
+mobile/pubspec.lock
+*.p12
 *.keystore

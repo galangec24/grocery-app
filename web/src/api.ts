@@ -1,24 +1,4 @@
-import { Capacitor } from "@capacitor/core";
-import { Preferences } from "@capacitor/preferences";
-
-export const isNative = Capacitor.isNativePlatform();
-const DEFAULT_NATIVE_URL = import.meta.env.VITE_API_URL || "http://10.0.2.2:8000";
-const SERVER_KEY = "server_url";
-
-let base: string = isNative ? DEFAULT_NATIVE_URL : import.meta.env.VITE_API_URL || "";
-
-export async function loadServerUrl() {
-  if (!isNative) return;
-  const { value } = await Preferences.get({ key: SERVER_KEY });
-  if (value) base = value;
-}
-
-export const getServerUrl = () => base;
-
-export async function setServerUrl(url: string) {
-  base = url.trim().replace(/\/+$/, "");
-  await Preferences.set({ key: SERVER_KEY, value: base });
-}
+const base: string = import.meta.env.VITE_API_URL || "";
 
 export class ApiError extends Error {
   constructor(message: string, public status: number) {
@@ -26,107 +6,91 @@ export class ApiError extends Error {
   }
 }
 
-export interface Offer {
-  product_id: string;
-  product_name: string;
-  brand: string;
-  package_size: string;
+export type Kind = "srp" | "prevailing";
+
+export interface PriceRow {
+  id: string;
+  source: "dti_srp" | "da_dpi";
+  source_label: string;
+  kind: Kind;
+  group: string;
   category: string;
-  store_id: string;
-  store_name: string;
-  store_address: string;
-  latitude: number;
-  longitude: number;
+  commodity: string;
+  specification: string;
+  unit: string;
+  region: string;
   price: number;
-  currency: string;
-  distance_km: number | null;
-  availability: "available" | "unavailable" | "unknown";
-  price_status: PriceStatus;
-  last_synced_at: string | null;
-  labels: string[];
+  previous_price: number | null;
+  change: number | null;
+  change_pct: number | null;
+  report_date: string;
+  source_url: string;
+  trend: number[];
 }
 
-export type PriceStatus = "fresh" | "aging" | "stale" | "unavailable" | "unknown";
+export interface SourceInfo {
+  id: string;
+  label: string;
+  coverage: string;
+  report_date: string | null;
+  rows: number;
+  source_url: string;
+}
 
-export interface SearchResponse {
-  results: Offer[];
-  stale_results: Offer[];
-  stale_hidden: number;
+export interface MarketSummary {
+  sources: SourceInfo[];
+  items: number;
+  categories: number;
+  rising: number;
+  falling: number;
+  top_rising: PriceRow[];
+  top_falling: PriceRow[];
   generated_at: string;
 }
 
 export interface Candidate {
-  product_id: string;
-  product_name: string;
-  brand: string;
-  package_size: string;
-  min_price: number;
-  store_count: number;
+  id: string;
+  commodity: string;
+  specification: string;
+  unit: string;
+  price: number;
+  source_label: string;
+  region: string;
 }
 
-export interface BasketItem {
+export interface BasketLine {
   query: string;
   quantity: number;
-  status: "matched" | "no_match" | "no_eligible_price";
-  selected_product_id: string | null;
+  status: "matched" | "no_match";
+  selected: PriceRow | null;
+  line_total: number;
   candidates: Candidate[];
-  offers: Offer[];
-  stale_offers: Offer[];
-}
-
-export interface StoreBasket {
-  store_id: string;
-  store_name: string;
-  distance_km: number | null;
-  total: number;
-  items_found: number;
-  items_missing: string[];
 }
 
 export interface BasketResponse {
-  items: BasketItem[];
-  stores: StoreBasket[];
-  best_single_store: StoreBasket | null;
-  split_basket: {
-    total: number;
-    store_count: number;
-    lines: {
-      query: string;
-      product_name: string;
-      package_size: string;
-      store_id: string;
-      store_name: string;
-      quantity: number;
-      unit_price: number;
-      line_total: number;
-    }[];
-  };
-  split_savings: number | null;
-  generated_at: string;
+  lines: BasketLine[];
+  total: number;
+  items_matched: number;
+  items_unmatched: number;
 }
 
-export interface StoreInfo {
-  store_id: string;
+export interface CityStore {
   name: string;
-  address: string;
-  organization: string;
+  type: "Mall" | "Supermarket";
   latitude: number;
   longitude: number;
-  distance_km: number | null;
+  distance_km: number;
 }
 
-export interface Stats {
-  retailers: number;
-  stores: number;
-  products: number;
-  listings: number;
-  sample_data: boolean;
-  public_demo_login: boolean;
-}
-
-export interface Category {
-  id: string;
-  name: string;
+export interface CityInfo {
+  city: string;
+  region: string;
+  island: "Luzon" | "Visayas" | "Mindanao";
+  metro_manila: boolean;
+  store_count: number;
+  stores_available: boolean;
+  stores: CityStore[];
+  attribution: string;
 }
 
 type Tokens = { access_token: string; refresh_token: string };
@@ -155,12 +119,7 @@ async function send(path: string, init: RequestInit): Promise<Response> {
   try {
     return await fetch(`${base}/api/v1${path}`, init);
   } catch {
-    throw new ApiError(
-      isNative
-        ? `Can't reach the server at ${base}. Check the address in More > Server.`
-        : "Can't reach the server. Check that the backend is running.",
-      0,
-    );
+    throw new ApiError("Can't reach the price server. It may be waking up, so please try again in a minute.", 0);
   }
 }
 

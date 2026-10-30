@@ -16,16 +16,16 @@ SECRET_KEY = os.getenv("SECRET_KEY") or secrets.token_urlsafe(48)
 ACCESS_TOKEN_MINUTES = 30
 REFRESH_TOKEN_DAYS = 14
 
-# Seeds clearly labelled sample data and runs the simulated retailer feeds.
-DEMO_MODE = os.getenv("DEMO_MODE", "true").lower() == "true"
-# Deployments set this to a generated value so the well-known password never goes public.
-DEMO_PASSWORD = os.getenv("DEMO_PASSWORD") or "demo-password"
-DEMO_PASSWORD_IS_PUBLIC = not os.getenv("DEMO_PASSWORD")
+# The dashboard's first account. Created once; changing these later has no effect.
+ADMIN_EMAIL = (os.getenv("ADMIN_EMAIL") or "").strip().lower()
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD") or ""
+
+# Turned off in tests so they never call government or map services.
+FETCH_MARKET_DATA = os.getenv("FETCH_MARKET_DATA", "true").lower() == "true"
+MARKET_CHECK_SECONDS = 3 * 60 * 60
 
 CORS_ORIGINS = os.getenv(
-    "CORS_ORIGINS",
-    "http://localhost,https://localhost,capacitor://localhost,"
-    "http://localhost:5173,http://127.0.0.1:5173",
+    "CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173,http://localhost:8000,http://127.0.0.1:8000",
 ).split(",")
 
 DEFAULT_FRESH_MINUTES = 60

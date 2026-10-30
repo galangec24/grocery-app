@@ -1,0 +1,24 @@
+name: Live price checks
+
+# Four times a day, Philippine daytime. This also wakes the free Render service,
+# and each wake checks the DTI and DA for newly published prices.
+on:
+  schedule:
+    - cron: "0 0,3,6,9 * * *"
+  workflow_dispatch:
+
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - run: pip install pytest httpx
+      - name: Wake the backend
+        run: curl -s --retry 8 --retry-delay 15 --retry-all-errors -m 90 https://grocery-price-finder-api.onrender.com/api/v1/health
+      - run: pytest -q live_tests -p no:cacheprovider

@@ -41,7 +41,7 @@ def integration_json(i: dict, names: dict[str, str], counts: Counter | None = No
         "sync_interval_minutes": i["sync_interval_minutes"], "fresh_minutes": i["fresh_minutes"],
         "stale_minutes": i["stale_minutes"], "status": i["status"],
         "last_successful_sync_at": cmp.iso(i.get("last_successful_sync_at")),
-        "can_sync": i["provider_name"].startswith("demo-feed"),
+        "can_sync": False,
         "freshness": {s: (counts or {}).get(s, 0) for s in STATUSES},
     }
 
@@ -127,6 +127,18 @@ def audit_logs(user: dict = Depends(current_user), db: Database = Depends(get_db
     return [
         {"action": a["action"], "actor": a.get("actor_email"), "detail": a.get("detail"), "created_at": cmp.iso(a["created_at"])}
         for a in rows
+    ]
+
+
+@router.get("/market-reports")
+def market_reports(user: dict = Depends(current_user), db: Database = Depends(get_db)):
+    return [
+        {
+            "source": r["source"], "status": r["status"], "report_date": r.get("report_date"),
+            "rows": r.get("rows", 0), "error": r.get("error"), "checked_at": cmp.iso(r["checked_at"]),
+            "url": r["_id"],
+        }
+        for r in db.market_reports.find().sort("checked_at", -1).limit(20)
     ]
 
 

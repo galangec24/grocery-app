@@ -1,0 +1,91 @@
+name: Build and deploy
+
+# Render redeploys the backend by itself on every push to main.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy
+  cancel-in-progress: true
+
+env:
+  API_URL: https://grocery-price-finder-api.onrender.com
+
+jobs:
+  backend-tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - run: pip install -r requirements.txt
+      - run: pytest -q tests
+
+  android:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: bash ci/prepare.sh android
+      - run: flutter analyze --no-fatal-infos
+      - run: flutter test
+      - run: flutter build apk --release --dart-define=API_URL=${{ env.API_URL }}
+
+  ios:
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: bash ci/prepare.sh ios
+      # Proves the app compiles for iPhone. App Store builds need an Apple Developer account.
+      - run: flutter build ios --release --no-codesign --dart-define=API_URL=${{ env.API_URL }}
+
+  website:
+    needs: [backend-tests, android]
+    runs-on: ubuntu-latest
+    env:
+      HAS_FIREBASE_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+        working-directory: web
+      - run: npm run build
+        working-directory: web
+        env:
+          VITE_API_URL: ${{ env.API_URL }}
+      - name: Publish to Firebase Hosting
+        if: env.HAS_FIREBASE_KEY == 'true'
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          projectId: grocery-app-71cfd
+          channelId: live
+      - name: Firebase key not set
+        if: env.HAS_FIREBASE_KEY != 'true'
+        run: echo "::warning::Add the FIREBASE_SERVICE_ACCOUNT secret to publish the website automatically."

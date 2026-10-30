@@ -1,4 +1,4 @@
-import type { Offer, PriceStatus } from "./api";
+import type { PriceStatus } from "./site/Dashboard";
 
 export const peso = (value: number) =>
   `₱${value.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -13,8 +13,8 @@ export function timeAgo(iso: string | null): string {
   return `${Math.round(hours / 24)} d ago`;
 }
 
-export const distance = (km: number | null) =>
-  km === null ? null : `${km < 10 ? km.toFixed(1) : Math.round(km)} km away`;
+export const longDate = (iso: string | null) =>
+  iso ? new Date(`${iso}T00:00:00`).toLocaleDateString("en-PH", { month: "long", day: "numeric", year: "numeric" }) : "Not loaded yet";
 
 export const STATUS_META: Record<PriceStatus, { label: string; icon: string }> = {
   fresh: { label: "Fresh", icon: "●" },
@@ -23,9 +23,6 @@ export const STATUS_META: Record<PriceStatus, { label: string; icon: string }> =
   unavailable: { label: "Unavailable", icon: "✕" },
   unknown: { label: "Unknown", icon: "?" },
 };
-
-export const stockText = (offer: Offer) =>
-  offer.availability === "available" ? "In stock" : offer.availability === "unavailable" ? "Out of stock" : "Stock unknown";
 
 export const mapUrl = (latitude: number, longitude: number) =>
   `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`;

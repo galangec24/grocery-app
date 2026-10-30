@@ -1,13 +1,12 @@
-import { Preferences } from "@capacitor/preferences";
 import { useCallback, useEffect, useState } from "react";
 
-/** Drafts live on the device so shoppers can use them without an account (spec 3.1). */
+/** Drafts live on the device so shoppers can use them without an account. */
 export interface DraftItem {
   id: string;
   query: string;
   quantity: number;
-  productId?: string;
-  productLabel?: string;
+  priceId?: string;
+  label?: string;
 }
 
 export interface Draft {
@@ -17,7 +16,7 @@ export interface Draft {
   updatedAt: string;
 }
 
-const KEY = "drafts_v1";
+const KEY = "drafts_v2";
 export const MAX_ITEMS = 30;
 
 export const newId = () => crypto.randomUUID();
@@ -26,37 +25,28 @@ export function newDraft(name = ""): Draft {
   return { id: newId(), name, items: [], updatedAt: new Date().toISOString() };
 }
 
-export async function readDrafts(): Promise<Draft[]> {
-  const { value } = await Preferences.get({ key: KEY });
-  if (!value) return [];
+export function readDrafts(): Draft[] {
   try {
-    const parsed = JSON.parse(value) as Draft[];
+    const parsed = JSON.parse(localStorage.getItem(KEY) ?? "[]") as Draft[];
     return parsed.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   } catch {
     return [];
   }
 }
 
-async function writeDrafts(drafts: Draft[]) {
-  await Preferences.set({ key: KEY, value: JSON.stringify(drafts) });
-}
-
-export async function saveDraft(draft: Draft) {
-  const drafts = await readDrafts();
+export function saveDraft(draft: Draft): Draft {
   const stamped = { ...draft, updatedAt: new Date().toISOString() };
-  await writeDrafts([stamped, ...drafts.filter((d) => d.id !== draft.id)]);
+  localStorage.setItem(KEY, JSON.stringify([stamped, ...readDrafts().filter((d) => d.id !== draft.id)]));
   return stamped;
 }
 
-export async function deleteDraft(id: string) {
-  await writeDrafts((await readDrafts()).filter((d) => d.id !== id));
+export function deleteDraft(id: string) {
+  localStorage.setItem(KEY, JSON.stringify(readDrafts().filter((d) => d.id !== id)));
 }
 
 export function useDrafts() {
-  const [drafts, setDrafts] = useState<Draft[] | null>(null);
-  const reload = useCallback(() => {
-    readDrafts().then(setDrafts);
-  }, []);
+  const [drafts, setDrafts] = useState<Draft[]>(readDrafts);
+  const reload = useCallback(() => setDrafts(readDrafts()), []);
   useEffect(reload, [reload]);
   return { drafts, reload };
 }
@@ -68,7 +58,7 @@ export function parseItems(text: string): { query: string; quantity: number }[] 
     let line = raw.trim();
     if (!line) continue;
     let quantity = 1;
-    const leading = line.match(/^(\d{1,3})\s*x\s+(.+)$/i) ?? line.match(/^(\d{1,3})\s+(?![a-z]*\s*$)(?=[a-z])(.+)$/i);
+    const leading = line.match(/^(\d{1,3})\s*x\s+(.+)$/i) ?? line.match(/^(\d{1,3})\s+([a-z].*)$/i);
     const trailing = line.match(/^(.+?)\s*x\s*(\d{1,3})$/i);
     if (leading && !/^(kg|g|l|ml|pcs?|pieces?)\b/i.test(leading[2])) {
       quantity = Number(leading[1]);

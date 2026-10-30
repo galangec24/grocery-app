@@ -1,11 +1,14 @@
+import os
+
+os.environ["FETCH_MARKET_DATA"] = "false"
+
 import pytest
 from fastapi.testclient import TestClient
 
 from app.api import limit_login, limit_search
-from app.config import DEMO_PASSWORD
 from app.db import database, ensure_indexes
 from app.main import app
-from app.seed import seed
+from sample_data import DEMO_PASSWORD, seed
 
 
 @pytest.fixture()
@@ -18,10 +21,10 @@ def client(db):
     for name in db.list_collection_names():
         db.drop_collection(name)
     ensure_indexes(db)
-    seed(db)
     limit_search.hits.clear()
     limit_login.hits.clear()
     with TestClient(app) as test_client:
+        seed(db)  # After startup, whose cleanup would remove these fictional retailers.
         yield test_client
 
 
