@@ -74,7 +74,7 @@ def matching(reports: list[dict], query: str) -> list[dict]:
 def report_json(report: dict) -> dict:
     return {
         "item_name": report["item_name"], "store_name": report["store_name"], "city": report["city"],
-        "origin": report.get("origin", "Shopper report"),
+        "origin": report.get("origin") or "Shopper report",
         "latitude": report["latitude"], "longitude": report["longitude"],
         "price": cmp.money(report["price_centavos"]), "reported_at": cmp.iso(report["created_at"]),
     }

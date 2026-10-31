@@ -162,20 +162,25 @@ export interface Route {
 }
 
 type Tokens = { access_token: string; refresh_token: string };
-const TOKENS = "grocery_admin_tokens";
 
-export const adminSession = {
-  get(): Tokens | null {
-    const raw = sessionStorage.getItem(TOKENS);
-    return raw ? JSON.parse(raw) : null;
-  },
-  set(tokens: Tokens) {
-    sessionStorage.setItem(TOKENS, JSON.stringify(tokens));
-  },
-  clear() {
-    sessionStorage.removeItem(TOKENS);
-  },
-};
+function tokenStore(storage: Storage, key: string) {
+  return {
+    get(): Tokens | null {
+      const raw = storage.getItem(key);
+      return raw ? JSON.parse(raw) : null;
+    },
+    set(tokens: Tokens) {
+      storage.setItem(key, JSON.stringify({ access_token: tokens.access_token, refresh_token: tokens.refresh_token }));
+    },
+    clear() {
+      storage.removeItem(key);
+    },
+  };
+}
+
+// Administrators sign in per tab. Shoppers stay signed in on their own device.
+export const adminSession = tokenStore(sessionStorage, "grocery_admin_tokens");
+export const shopperSession = tokenStore(localStorage, "grocery_shopper_tokens");
 
 function describe(detail: unknown, status: number): string {
   if (typeof detail === "string") return detail;
@@ -191,16 +196,17 @@ async function send(path: string, init: RequestInit): Promise<Response> {
   }
 }
 
-export async function api<T>(path: string, init: RequestInit = {}, authed = false): Promise<T> {
+export async function api<T>(path: string, init: RequestInit = {}, authed: boolean | "shopper" = false): Promise<T> {
+  const session = authed === "shopper" ? shopperSession : adminSession;
   const withAuth = (): RequestInit => {
-    const tokens = adminSession.get();
+    const tokens = session.get();
     return tokens
       ? { ...init, headers: { ...init.headers, Authorization: `Bearer ${tokens.access_token}` } }
       : init;
   };
   let response = await send(path, authed ? withAuth() : init);
 
-  const tokens = adminSession.get();
+  const tokens = session.get();
   if (authed && response.status === 401 && tokens) {
     const renewed = await send("/auth/refresh", {
       method: "POST",
@@ -208,10 +214,10 @@ export async function api<T>(path: string, init: RequestInit = {}, authed = fals
       body: JSON.stringify({ refresh_token: tokens.refresh_token }),
     });
     if (renewed.ok) {
-      adminSession.set({ ...tokens, access_token: (await renewed.json()).access_token });
+      session.set({ ...tokens, access_token: (await renewed.json()).access_token });
       response = await send(path, withAuth());
     } else {
-      adminSession.clear();
+      session.clear();
     }
   }
 
@@ -222,7 +228,7 @@ export async function api<T>(path: string, init: RequestInit = {}, authed = fals
   return response.json();
 }
 
-export const postJson = <T,>(path: string, body: unknown, authed = false) =>
+export const postJson = <T,>(path: string, body: unknown, authed: boolean | "shopper" = false) =>
   api<T>(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }, authed);
 
 export function query(params: Record<string, string | number | boolean | null | undefined>) {

@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
+import { useAccount } from "../account";
+import { api } from "../api";
 import { useBudget } from "../budget";
 import { peso } from "../format";
 import { IconButton } from "../icons";
@@ -15,7 +17,14 @@ export function Reports() {
   const [from, setFrom] = useState(now);
   const [to, setTo] = useState(now);
   const [confirming, setConfirming] = useState<string | null>(null);
+  const { user } = useAccount();
+  const [shared, setShared] = useState<{ id: string; item_name: string; store_name: string; price: number; status: string; reason: string | null }[]>([]);
   useEffect(() => setSpent(0), [setSpent]);
+  useEffect(() => {
+    if (!user) { setShared([]); return; }
+    api<typeof shared>("/market/proofs/mine", {}, "shopper").then(setShared).catch(() => setShared([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
 
   const year = now.slice(0, 4);
   const presets: [string, string, string][] = [
@@ -75,6 +84,23 @@ export function Reports() {
         </div>
         <div className="tile3d"><span>Purchases saved</span><strong>{shown.length}</strong><small>{shown.length ? `${peso(total / shown.length)} on average` : "None in this period"}</small></div>
       </div>
+
+      {shared.length > 0 && (
+        <section className="panel">
+          <h2>Prices you shared</h2>
+          <ul className="plain">
+            {shared.map((proof) => (
+              <li className="purchase-row" key={proof.id}>
+                <span><b>{proof.item_name}</b><small>{proof.store_name}{proof.reason ? ` · ${proof.reason}` : ""}</small></span>
+                <span className="price">{peso(proof.price)}</span>
+                <span className={`health ${proof.status === "approved" ? "good" : proof.status === "rejected" ? "bad" : ""}`}>
+                  {proof.status === "approved" ? "● Verified" : proof.status === "rejected" ? "▲ Not accepted" : "○ In review"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {purchases.length === 0 ? (
         <section className="panel"><p className="muted empty">No purchases saved yet. Finish a list, then click Save this purchase on the receipt.</p></section>

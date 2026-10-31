@@ -16,7 +16,7 @@ from . import comparison as cmp
 from . import live
 from .db import new_id, utcnow
 
-KINDS = {"retailer_api", "retailer_feed", "retailer_website", "comparison_site", "open_data", "government", "community"}
+KINDS = {"manual", "retailer_api", "retailer_feed", "retailer_website", "comparison_site", "open_data", "government", "community"}
 PERMISSIONS = {"open_license", "granted", "pending", "refused"}
 USABLE = {"open_license", "granted"}
 MAX_PRICE_AGE_DAYS = 30
@@ -31,7 +31,9 @@ SOURCES = [
     ("shoppers", "Shopper reports", "community", "granted", True, "", "Prices shoppers choose to share."),
     ("budolista", "Budolista", "comparison_site", "pending", False, "https://budolista.ph/terms",
      "Terms allow personal, non-commercial use only. Needs written permission from Baptiste Group."),
-    ("sm-markets", "SM Markets", "retailer_website", "pending", False, "", "Needs a partnership or written permission."),
+    ("manual", "Admin price updates", "manual", "granted", True, "", "Prices entered by administrators."),
+    ("sm-markets", "SM Markets", "retailer_website", "pending", False, "https://smmarkets.ph/robots.txt",
+     "robots.txt disallows catalog, product and search pages. Needs a partnership or a data feed."),
     ("waltermart", "WalterMart", "retailer_website", "pending", False, "", "Needs a partnership or written permission."),
     ("metromart", "MetroMart", "retailer_website", "pending", False, "", "Needs a partnership or written permission."),
 ]

@@ -1,6 +1,6 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { api, postJson } from "../api";
-import { IconButton } from "../icons";
+import { Icon, IconButton } from "../icons";
 
 interface Account {
   id: string;
@@ -76,6 +76,8 @@ export function AdminTools({ onChanged }: { onChanged: () => void }) {
   const [agent, setAgent] = useState<AgentStatus | null>(null);
   const [connecting, setConnecting] = useState<string | null>(null);
   const [connector, setConnector] = useState("");
+  const [mall, setMall] = useState({ name: "", kind: "retailer_api", terms_url: "" });
+  const [manual, setManual] = useState({ retailer: "", branch: "", product: "", size: "", price: "" });
   const [feedResult, setFeedResult] = useState<string | null>(null);
   const [granting, setGranting] = useState<string | null>(null);
   const [proof, setProof] = useState("");
@@ -122,6 +124,22 @@ export function AdminTools({ onChanged }: { onChanged: () => void }) {
       );
       setFeedResult(`${source.name}: ${result.imported} imported, ${result.rejected} rejected.${result.rejections[0] ? ` Row ${result.rejections[0].row}: ${result.rejections[0].reason}.` : ""}`);
     }, "Import finished.");
+  }
+
+  function addMall(event: FormEvent) {
+    event.preventDefault();
+    act(async () => {
+      await postJson("/admin/sources", { ...mall, notes: "" }, true);
+      setMall({ name: "", kind: "retailer_api", terms_url: "" });
+    }, "Mall added. Record permission to switch it on.");
+  }
+
+  function updatePrice(event: FormEvent) {
+    event.preventDefault();
+    act(async () => {
+      await postJson("/admin/prices", { ...manual, price: Number(manual.price) }, true);
+      setManual({ retailer: "", branch: "", product: "", size: "", price: "" });
+    }, "Price updated. Open apps will show it within 30 seconds.");
   }
 
   function addUser(event: FormEvent) {
@@ -185,8 +203,8 @@ export function AdminTools({ onChanged }: { onChanged: () => void }) {
       </section>
 
       <section className="card">
-        <h2>Price data sources</h2>
-        <p className="muted">Nothing is imported from a source until permission is on record.</p>
+        <h2>Malls and price sources</h2>
+        <p className="muted">Connect every mall here. Nothing is imported until permission is on record.</p>
         <div className="table-scroll">
           <table>
             <thead><tr><th>Source</th><th>Permission</th><th className="num">Feed prices</th><th>Last import</th><th /></tr></thead>
@@ -201,6 +219,7 @@ export function AdminTools({ onChanged }: { onChanged: () => void }) {
                     {source.can_run && source.kind !== "government" && source.kind !== "open_data" && source.kind !== "community" && (
                       <label className="mini">Import CSV<input type="file" accept=".csv,text/csv" hidden onChange={(e) => importFeed(source, e.target.files?.[0])} /></label>
                     )}
+                    {source.can_run && source.connector_url && <IconButton icon="refresh" label="Activate the agent for this mall" onClick={() => act(() => postJson(`/admin/sources/${source.id}/run`, {}, true), `Agent started for ${source.name}.`)} />}
                     {source.can_run && source.kind.startsWith("retailer") && <IconButton icon="plusCircle" label={source.connector_url ? "Change API connector" : "Connect an API"} onClick={() => { setConnecting(source.id); setConnector(source.connector_url ?? ""); }} />}
                     {source.permission === "pending" && <button className="mini" onClick={() => { setGranting(source.id); setProof(""); }}>Record permission</button>}
                     {source.permission === "granted" && source.kind !== "community" && <button className="mini" onClick={() => act(() => send(`/admin/sources/${source.id}`, "PATCH", { permission: "pending" }), `${source.name} paused.`)}>Pause</button>}
@@ -231,6 +250,17 @@ export function AdminTools({ onChanged }: { onChanged: () => void }) {
           </form>
         )}
         {feedResult && <p className="notice">{feedResult}</p>}
+        <form className="admin-form" onSubmit={addMall}>
+          <input required minLength={2} placeholder="Mall or retailer name" aria-label="Mall name" value={mall.name} onChange={(e) => setMall({ ...mall, name: e.target.value })} />
+          <select aria-label="How it connects" value={mall.kind} onChange={(e) => setMall({ ...mall, kind: e.target.value })}>
+            <option value="retailer_api">Retailer API</option>
+            <option value="retailer_feed">CSV or Excel feed</option>
+            <option value="retailer_website">Retailer website</option>
+            <option value="comparison_site">Comparison site</option>
+          </select>
+          <input type="url" placeholder="Terms or agreement link (optional)" aria-label="Terms link" value={mall.terms_url} onChange={(e) => setMall({ ...mall, terms_url: e.target.value })} />
+          <button className="btn primary with-icon"><Icon name="plus" />Add mall</button>
+        </form>
         <p className="hint">CSV columns: <code>retailer, product, size, price, verified_at</code>. Add <code>branch</code>, <code>city</code>, <code>latitude</code> and <code>longitude</code> for a branch price. Without a branch, it counts as a chain price.</p>
       </section>
 
@@ -271,6 +301,19 @@ export function AdminTools({ onChanged }: { onChanged: () => void }) {
             </select>
           )}
           <button className="btn primary">Add account</button>
+        </form>
+      </section>
+
+      <section className="card">
+        <h2>Update a price by hand</h2>
+        <p className="muted">Without a branch, this counts as a chain price, shown as "branches may differ".</p>
+        <form className="admin-form" onSubmit={updatePrice}>
+          <input required minLength={2} placeholder="Mall or retailer" aria-label="Retailer" value={manual.retailer} onChange={(e) => setManual({ ...manual, retailer: e.target.value })} />
+          <input placeholder="Branch (optional)" aria-label="Branch" value={manual.branch} onChange={(e) => setManual({ ...manual, branch: e.target.value })} />
+          <input required minLength={2} placeholder="Product" aria-label="Product" value={manual.product} onChange={(e) => setManual({ ...manual, product: e.target.value })} />
+          <input required placeholder="Size, like 85g" aria-label="Size" value={manual.size} onChange={(e) => setManual({ ...manual, size: e.target.value })} />
+          <input required type="number" min="0.01" step="0.01" placeholder="Price" aria-label="Price" value={manual.price} onChange={(e) => setManual({ ...manual, price: e.target.value })} />
+          <button className="btn primary with-icon"><Icon name="save" />Save price</button>
         </form>
       </section>
 

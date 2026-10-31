@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -8,6 +9,8 @@ import 'api.dart';
 import 'drafts.dart';
 
 const _budgetKey = 'budget_v1';
+const _refreshKey = 'refresh_token';
+const _nameKey = 'shopper_name';
 
 /// Shared app data. Device coordinates are used once and never kept.
 class AppState extends ChangeNotifier {
@@ -24,6 +27,32 @@ class AppState extends ChangeNotifier {
   double? longitude;
   bool locating = false;
   String? locationError;
+
+  static const _secure = FlutterSecureStorage();
+  Session? session;
+
+  Future<void> signIn(String email, String password, {String? name}) async {
+    session = await api.signIn(email, password, name: name);
+    await _secure.write(key: _refreshKey, value: session!.refreshToken);
+    await _secure.write(key: _nameKey, value: session!.name);
+    notifyListeners();
+  }
+
+  /// A fresh access token, or null when the shopper needs to sign in.
+  Future<String?> accessToken() async {
+    final refresh = session?.refreshToken ?? await _secure.read(key: _refreshKey);
+    if (refresh == null) return null;
+    try {
+      final token = await api.refresh(refresh);
+      session ??= Session(name: await _secure.read(key: _nameKey) ?? '', accessToken: token, refreshToken: refresh);
+      session!.accessToken = token;
+      return token;
+    } on ApiException {
+      await _secure.delete(key: _refreshKey);
+      session = null;
+      return null;
+    }
+  }
 
   int liveVersion = 0;
   Timer? _liveTimer;

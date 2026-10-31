@@ -34,6 +34,15 @@ def client(db):
         yield test_client
 
 
+def shopper(client, email="shopper@example.com"):
+    """Headers for a registered shopper, creating the account the first time."""
+    tokens = client.__dict__.setdefault("shopper_tokens", {})
+    if email not in tokens:
+        body = dict(email=email, full_name="Test Shopper", password="a-long-password")
+        tokens[email] = client.post("/api/v1/auth/register", json=body).json()["access_token"]
+    return {"Authorization": f"Bearer {tokens[email]}"}
+
+
 def auth(client, email):
     response = client.post("/api/v1/auth/login", json={"email": email, "password": DEMO_PASSWORD})
     return {"Authorization": f"Bearer {response.json()['access_token']}"}

@@ -548,6 +548,24 @@ table.prices .icon-btn { width: 38px; height: 38px; }
 .agent-stats div { padding: 10px 12px; border-radius: 12px; background: var(--green-100); }
 .agent-stats strong { display: block; font-size: 1.4rem; font-variant-numeric: tabular-nums; }
 
+/* Accounts, proofs and mall tools */
+.shop-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.account-chip { padding: 7px 13px; border: 0; border-radius: 99px; color: #fff; font-size: .82rem; font-weight: 600; cursor: pointer; background: rgba(255, 255, 255, .16); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .3); }
+.account-card label { display: grid; gap: 3px; font-size: .85rem; font-weight: 600; }
+.proof-pick { display: inline-flex; align-items: center; gap: 7px; flex: none; padding: 0 13px; min-height: 44px; border-radius: 12px; font-size: .86rem; font-weight: 700; cursor: pointer; color: var(--green-900); background: #fff; box-shadow: 0 3px 0 #e2cf97; }
+.proof-pick.on { color: #fff; background: var(--green-700); box-shadow: 0 3px 0 #0f4023; }
+.count-badge { display: inline-block; min-width: 24px; padding: 0 7px; border-radius: 99px; color: #fff; font-size: .78rem; text-align: center; background: var(--critical); }
+.proof-list { display: grid; gap: 12px; margin-top: 10px; }
+.proof-card { display: grid; grid-template-columns: 170px 1fr; gap: 14px; padding: 12px; border-radius: 14px; background: #f7f9f3; box-shadow: inset 0 0 0 1px var(--line); }
+.proof-photo { display: block; width: 170px; height: 170px; object-fit: cover; border-radius: 10px; background: #e8e6dc; }
+.proof-body { display: grid; gap: 5px; align-content: start; min-width: 0; }
+.proof-checks { font-size: .84rem; gap: 3px; }
+.proof-checks li { display: flex; justify-content: space-between; gap: 12px; }
+.proof-actions { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.proof-actions > input { flex: 1; min-width: 0; }
+.proof-price { display: inline-flex; align-items: center; gap: 3px; font-weight: 700; }
+.proof-price input { width: 110px; }
+
 @media (max-width: 800px) {
   .hero, .two-col { grid-template-columns: 1fr; }
   .hero { padding: 16px 22px 96px; gap: 26px; }
@@ -558,6 +576,8 @@ table.prices .icon-btn { width: 38px; height: 38px; }
   .reports .two-col { grid-template-columns: 1fr; }
   .controls { grid-template-columns: 1fr; }
   .workspace { grid-template-columns: 1fr; }
+  .proof-card { grid-template-columns: 1fr; }
+  .proof-photo { width: 100%; }
   .share-row { flex-direction: column; }
   .side { position: static; max-height: none; }
   .budget-bar { margin: 10px 8px 0; gap: 10px; }

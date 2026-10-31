@@ -18,7 +18,7 @@ import httpx
 from pymongo.database import Database
 
 from . import comparison as cmp
-from . import community, ingestion, live, market
+from . import community, ingestion, live, market, proofs
 from . import search as meaning
 from .db import new_id, utcnow
 
@@ -126,6 +126,7 @@ def run_cycle(db: Database, http: httpx.Client | None = None) -> dict:
     if any(step["status"] == "failed" for step in connector_results):
         run["status"] = "partial"
 
+    run["photos_removed"] = proofs.purge_photos(db)
     run["coverage"] = fill_prices(db)
     run["data_changed"] = fingerprint(db) != before or run["coverage"]["updated"] > 0
     run["finished_at"] = utcnow()

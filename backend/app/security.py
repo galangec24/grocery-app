@@ -86,6 +86,13 @@ def require_org(user: dict, organization_id: str, roles: set[str] | None = None)
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Not authorized for this organization")
 
 
+def staff_only(user: dict = Depends(current_user)) -> dict:
+    """Shopper accounts share prices, but never reach administration."""
+    if all(r["role"] == "shopper" for r in user["roles"]):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Administrator access required")
+    return user
+
+
 def require_system_admin(user: dict = Depends(current_user)) -> dict:
     if not is_system_admin(user):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "System administrator role required")

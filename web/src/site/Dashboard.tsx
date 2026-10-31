@@ -2,6 +2,7 @@ import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { adminSession, api, ApiError, postJson } from "../api";
 import { peso, STATUS_META, timeAgo } from "../format";
 import { AdminTools } from "./AdminTools";
+import { ProofQueue } from "./ProofQueue";
 
 interface Retailer {
   id: string;
@@ -205,6 +206,7 @@ function Console({ onExpired }: { onExpired: () => void }) {
         </div>
       </section>
 
+      {systemAdmin && <ProofQueue onChanged={load} />}
       {systemAdmin && <AdminTools onChanged={load} />}
 
       {overview.retailers.length === 0 && (

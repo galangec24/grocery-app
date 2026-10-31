@@ -15,6 +15,8 @@ else
   plist=ios/Runner/Info.plist
   /usr/libexec/PlistBuddy -c "Add :NSLocationWhenInUseUsageDescription string 'Finds your city so the app can show the official prices and stores that apply to you.'" "$plist"
   /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName 'Grocery Price Finder'" "$plist"
+  /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string 'Take a photo of a receipt or shelf tag as proof of a price.'" "$plist"
+  /usr/libexec/PlistBuddy -c "Add :NSPhotoLibraryUsageDescription string 'Choose a photo of a receipt or shelf tag as proof of a price.'" "$plist"
 fi
 
 flutter pub get

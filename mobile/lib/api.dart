@@ -213,9 +213,67 @@ class Basket {
   final List<BasketLine> lines;
 }
 
+class Session {
+  Session({required this.name, required this.accessToken, required this.refreshToken});
+
+  final String name;
+  String accessToken;
+  final String refreshToken;
+}
+
 class Api {
   Api({http.Client? client}) : _client = client ?? http.Client();
   final http.Client _client;
+
+  Map<String, String> _bearer(String token) => {'Authorization': 'Bearer $token'};
+
+  Future<Session> signIn(String email, String password, {String? name}) async {
+    final data = await _send(() => _client.post(
+          _uri(name == null ? '/auth/login' : '/auth/register'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'email': email,
+            'password': password,
+            if (name != null) 'full_name': name,
+          }),
+        ));
+    return Session(
+      name: data['user']['full_name'] as String,
+      accessToken: data['access_token'] as String,
+      refreshToken: data['refresh_token'] as String,
+    );
+  }
+
+  Future<String> refresh(String refreshToken) async {
+    final data = await _send(() => _client.post(
+          _uri('/auth/refresh'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'refresh_token': refreshToken}),
+        ));
+    return data['access_token'] as String;
+  }
+
+  Future<void> submitProof({
+    required String token,
+    required String name,
+    required CityStore store,
+    required String city,
+    required double price,
+    required List<int> photo,
+  }) async {
+    final request = http.MultipartRequest('POST', _uri('/market/proofs'))
+      ..headers.addAll(_bearer(token))
+      ..fields.addAll({
+        'name': name,
+        'store_name': store.name,
+        'latitude': '${store.latitude}',
+        'longitude': '${store.longitude}',
+        'city': city,
+        'price': '$price',
+      })
+      ..files.add(http.MultipartFile.fromBytes('photo', photo, filename: 'proof.jpg'));
+    await _send(() async => http.Response.fromStream(await _client.send(request)));
+  }
 
   Future<dynamic> _send(Future<http.Response> Function() request) async {
     final http.Response response;
@@ -298,6 +356,7 @@ class Api {
   }
 
   Future<bool> shareShelfPrice({
+    required String token,
     required String name,
     required CityStore store,
     required String city,
@@ -305,7 +364,7 @@ class Api {
   }) async {
     final data = await _send(() => _client.post(
           _uri('/market/shelf-prices'),
-          headers: {'Content-Type': 'application/json'},
+          headers: {'Content-Type': 'application/json', ..._bearer(token)},
           body: jsonEncode({
             'name': name,
             'store_name': store.name,

@@ -1,3 +1,4 @@
+import { AccountProvider, useAccount } from "../account";
 import { BudgetBar, BudgetProvider } from "../budget";
 import { Hero3D, useTilt } from "../site/Hero3D";
 import { PriceBoard } from "../site/PriceBoard";
@@ -13,6 +14,13 @@ const TABS = [
 
 const TITLES: Record<string, string> = { compare: "Build your list", drafts: "Your drafts", reports: "Spending reports" };
 
+function AccountButton() {
+  const { user, ask, signOut } = useAccount();
+  return user
+    ? <button className="account-chip" title="Sign out" onClick={signOut}>{user.full_name.split(" ")[0]} · Sign out</button>
+    : <button className="account-chip" onClick={ask}>Sign in</button>;
+}
+
 export function Shop({ path }: { path: string }) {
   const [, , section, id] = path.split("/");
   const { scene, tilt } = useTilt();
@@ -24,10 +32,13 @@ export function Shop({ path }: { path: string }) {
 
   const active = `/shop${section ? `/${section}` : ""}`;
   return (
-    <BudgetProvider>
+    <AccountProvider><BudgetProvider>
       <div className="shop">
         <header className={`shop-hero${section ? " slim" : ""}`} onPointerMove={tilt}>
-          <a className="brand" href="#/"><img className="brand-mark" src="./logo.png" alt="" /> Grocery Price Finder</a>
+          <div className="shop-top">
+            <a className="brand" href="#/"><img className="brand-mark" src="./logo.png" alt="" /> Grocery Price Finder</a>
+            <AccountButton />
+          </div>
           {section ? (
             <h1>{TITLES[section]}</h1>
           ) : (
@@ -50,6 +61,6 @@ export function Shop({ path }: { path: string }) {
           ))}
         </nav>
       </div>
-    </BudgetProvider>
+    </BudgetProvider></AccountProvider>
   );
 }

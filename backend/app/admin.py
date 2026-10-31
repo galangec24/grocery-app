@@ -2,19 +2,19 @@
 from collections import Counter, defaultdict
 from statistics import median
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Response, UploadFile
 from pydantic import BaseModel, Field, field_validator
 from pymongo.database import Database
 
-from . import agent, catalog, community, ingestion
+from . import agent, catalog, community, ingestion, proofs
 from .sources import open_data
 from . import comparison as cmp
 from .config import MAX_CSV_BYTES
 from .db import get_db, new_id, utcnow
-from .security import audit, current_user, hash_password, require_org, require_system_admin, scope_filter
+from .security import audit, current_user, hash_password, require_org, require_system_admin, scope_filter, staff_only
 from .sync import AdapterError, CsvAdapter, adapter_for, run_sync
 
-router = APIRouter(prefix="/api/v1/admin")
+router = APIRouter(prefix="/api/v1/admin", dependencies=[Depends(staff_only)])
 INTEGRATION_ROLES = {"supervisor", "integration_admin", "mall_admin"}
 STATUSES = ["fresh", "aging", "stale", "unavailable", "unknown"]
 
@@ -350,6 +350,84 @@ def run_agent(
 ):
     tasks.add_task(agent.run_cycle, db)
     audit(db, user, "agent.run_requested")
+    return {"started": True}
+
+
+@router.get("/proofs")
+def list_proofs(
+    status: str = "pending", user: dict = Depends(require_system_admin), db: Database = Depends(get_db),
+):
+    rows = db.proofs.find({"status": status}, {"photo": 0}).sort("created_at", -1).limit(50)
+    return [proofs.proof_json(db, p, for_admin=True) for p in rows]
+
+
+@router.get("/proofs/{proof_id}/photo")
+def proof_photo(proof_id: str, user: dict = Depends(require_system_admin), db: Database = Depends(get_db)):
+    proof = db.proofs.find_one({"_id": proof_id})
+    if proof is None or not proof.get("photo"):
+        raise HTTPException(404, "Photo not found")
+    return Response(bytes(proof["photo"]), media_type=proof["photo_type"], headers={
+        "X-Content-Type-Options": "nosniff", "Cache-Control": "private, no-store",
+    })
+
+
+class ProofDecision(BaseModel):
+    price: float | None = Field(None, gt=0, le=999999)
+    reason: str = Field("", max_length=200)
+
+
+@router.post("/proofs/{proof_id}/approve")
+def approve_proof(
+    proof_id: str, body: ProofDecision, user: dict = Depends(require_system_admin), db: Database = Depends(get_db),
+):
+    proof = proofs.approve(db, proof_id, user, body.price)
+    audit(db, user, "proof.approved", None, f'{proof["item_name"]} at {proof["store_name"]}: {cmp.money(proof["price_centavos"])}')
+    return {"status": proof["status"]}
+
+
+@router.post("/proofs/{proof_id}/reject")
+def reject_proof(
+    proof_id: str, body: ProofDecision, user: dict = Depends(require_system_admin), db: Database = Depends(get_db),
+):
+    if not body.reason.strip():
+        raise HTTPException(422, "Give a reason so the shopper understands")
+    proof = proofs.reject(db, proof_id, user, body.reason.strip())
+    audit(db, user, "proof.rejected", None, f'{proof["item_name"]}: {body.reason.strip()}')
+    return {"status": proof["status"]}
+
+
+class ManualPrice(BaseModel):
+    retailer: str = Field(min_length=2, max_length=120)
+    branch: str = Field("", max_length=120)
+    city: str = Field("", max_length=80)
+    latitude: float | None = None
+    longitude: float | None = None
+    product: str = Field(min_length=2, max_length=160)
+    size: str = Field(min_length=1, max_length=40)
+    price: float = Field(gt=0, le=999999)
+
+
+@router.post("/prices", status_code=201)
+def manual_price(body: ManualPrice, user: dict = Depends(require_system_admin), db: Database = Depends(get_db)):
+    row = {k: "" if v is None else str(v) for k, v in body.model_dump().items()}
+    result = ingestion.import_rows(db, "manual", [{**row, "verified_at": utcnow().isoformat()}])
+    if result["rejected"]:
+        raise HTTPException(422, result["rejections"][0]["reason"])
+    audit(db, user, "price.manual_update", None, f"{body.product} {body.size} at {body.retailer}: {body.price}")
+    return result
+
+
+@router.post("/sources/{source_id}/run", status_code=202)
+def run_source(
+    source_id: str, tasks: BackgroundTasks, user: dict = Depends(require_system_admin), db: Database = Depends(get_db),
+):
+    source = db.price_sources.find_one({"_id": source_id})
+    if source is None or not source.get("connector"):
+        raise HTTPException(409, "Connect this mall's API first")
+    if not ingestion.can_run(db, source_id):
+        raise HTTPException(409, "This mall has no permission on record")
+    tasks.add_task(agent.run_cycle, db)
+    audit(db, user, "source.agent_activated", None, source["name"])
     return {"started": True}
 
 

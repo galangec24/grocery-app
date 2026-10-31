@@ -11,6 +11,7 @@ from app import market, search
 from app.bootstrap import ensure_admin, purge_sample_data
 from app.db import utcnow
 from app.sources import da_dpi, dti_srp, open_data
+from conftest import shopper
 from sample_data import seed
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -266,7 +267,7 @@ def test_admin_created_once(client, db, monkeypatch):
 
 def shelf(client, name="Leslie's Cheezy Corn Crunch 70g", store="SM Hypermarket", price=33.5, lat=10.31, lon=123.89):
     body = dict(name=name, store_name=store, latitude=lat, longitude=lon, city="Cebu City", price=price)
-    return client.post("/api/v1/market/shelf-prices", json=body)
+    return client.post("/api/v1/market/shelf-prices", json=body, headers=shopper(client))
 
 
 def test_snacks_have_small_and_large_sizes(client):
@@ -348,7 +349,7 @@ def test_old_reports_expire(client, db):
 @pytest.mark.parametrize("change", [{"price": 0}, {"price": -5}, {"latitude": 1.3}, {"store_name": "x"}])
 def test_bad_shelf_prices_are_refused(client, change):
     body = dict(name="Piatos", store_name="SM", latitude=10.3, longitude=123.9, city="Cebu City", price=30)
-    assert client.post("/api/v1/market/shelf-prices", json={**body, **change}).status_code == 422
+    assert client.post("/api/v1/market/shelf-prices", json={**body, **change}, headers=shopper(client)).status_code == 422
 
 
 FOOD = {"code": "4800016", "product_name": "Cheezy Corn Crunch", "brands": "Leslie's,Other", "quantity": "70 g",

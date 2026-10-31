@@ -3,7 +3,7 @@ import pytest
 
 from app import agent, ingestion, live, market
 from app.db import utcnow
-from sample_data import DEMO_PASSWORD  # noqa: F401
+from conftest import shopper
 from test_market import SRP_URL, dti_srp, da_dpi, DPI_PDF, SRP_PDF
 
 TODAY = utcnow().date().isoformat()
@@ -52,7 +52,7 @@ PRICE = {"retailer": "WalterMart", "product": "Piatos Cheese", "size": "85g", "p
 
 def test_agent_saves_the_best_price_on_each_product(client, db):
     shelf = dict(name="Jack 'n Jill Piatos Cheese 85g", store_name="SM Hypermarket", latitude=10.31, longitude=123.89, city="Cebu City", price=41)
-    client.post("/api/v1/market/shelf-prices", json=shelf)
+    client.post("/api/v1/market/shelf-prices", json=shelf, headers=shopper(client))
     run = agent.run_cycle(db, Http(Reply([])))
     item = db.catalog_items.find_one({"name": "Jack 'n Jill Piatos Cheese", "size": "85g"})
     assert item["auto_price"]["price"] == 41 and item["auto_price"]["kind"] == "store"
@@ -136,7 +136,7 @@ def test_only_changes_move_the_live_version(client, db):
 
 def test_a_shared_price_reaches_open_apps_at_once(client, db):
     before = client.get("/api/v1/market/live").json()["version"]
-    client.post("/api/v1/market/shelf-prices", json=dict(name="Piatos", store_name="SM Mart", latitude=10.3, longitude=123.9, city="Cebu City", price=30))
+    client.post("/api/v1/market/shelf-prices", json=dict(name="Piatos", store_name="SM Mart", latitude=10.3, longitude=123.9, city="Cebu City", price=30), headers=shopper(client))
     assert client.get("/api/v1/market/live").json()["version"] == before + 1
 
 

@@ -2,6 +2,9 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import 'package:image_picker/image_picker.dart';
+
+import '../account.dart';
 import '../api.dart';
 import '../best_store.dart';
 import '../calculator.dart';
@@ -155,11 +158,18 @@ class _ListEditorState extends State<ListEditor> {
       messenger.showSnackBar(const SnackBar(content: Text('Find your city on the Prices tab first.')));
       return;
     }
+    var token = await state.accessToken();
+    if (token == null) {
+      if (!mounted || !await askToSignIn(context)) return;
+      token = await state.accessToken();
+      if (token == null) return;
+    }
+    if (!mounted) return;
     final store = await showModalBottomSheet<CityStore>(
       context: context,
       builder: (context) => SafeArea(
         child: ListView(shrinkWrap: true, children: [
-          const ListTile(title: Text('Where did you see these prices?'), subtitle: Text('Only the item, price and store are shared.')),
+          const ListTile(title: Text('Where did you see these prices?')),
           for (final s in city.stores)
             ListTile(
               title: Text(s.name),
@@ -169,18 +179,40 @@ class _ListEditorState extends State<ListEditor> {
         ]),
       ),
     );
-    if (store == null) return;
-    var shared = 0;
-    for (final item in _draft.items.where((i) => (i.customPrice ?? 0) > 0)) {
-      final held = await state.api.shareShelfPrice(
-        name: _lineFor(item)?.label ?? item.query,
-        store: store,
-        city: city.city,
-        price: item.customPrice!,
-      );
-      if (!held) shared++;
+    if (store == null || !mounted) return;
+    final source = await showModalBottomSheet<ImageSource?>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const ListTile(
+            title: Text('Add proof to get these verified'),
+            subtitle: Text('Photograph the receipt or shelf tag. Cover card numbers and personal details. Only administrators see it.'),
+          ),
+          ListTile(leading: const Icon(Icons.photo_camera), title: const Text('Take a photo'), onTap: () => Navigator.pop(context, ImageSource.camera)),
+          ListTile(leading: const Icon(Icons.photo_library), title: const Text('Choose a photo'), onTap: () => Navigator.pop(context, ImageSource.gallery)),
+          ListTile(leading: const Icon(Icons.send), title: const Text('Share without proof'), onTap: () => Navigator.pop(context)),
+        ]),
+      ),
+    );
+    final shot = source == null ? null : await ImagePicker().pickImage(source: source, maxWidth: 1280, maxHeight: 1280, imageQuality: 72);
+    final photo = await shot?.readAsBytes();
+    var sent = 0;
+    try {
+      for (final item in _draft.items.where((i) => (i.customPrice ?? 0) > 0)) {
+        final name = _lineFor(item)?.label ?? item.query;
+        if (photo != null) {
+          await state.api.submitProof(token: token, name: name, store: store, city: city.city, price: item.customPrice!, photo: photo);
+        } else {
+          await state.api.shareShelfPrice(token: token, name: name, store: store, city: city.city, price: item.customPrice!);
+        }
+        sent++;
+      }
+      messenger.showSnackBar(SnackBar(content: Text(photo != null
+          ? 'Thanks! $sent sent with your proof for review.'
+          : 'Thanks! $sent shared with shoppers in ${city.city}.')));
+    } on ApiException catch (error) {
+      messenger.showSnackBar(SnackBar(content: Text(error.message)));
     }
-    messenger.showSnackBar(SnackBar(content: Text('Thanks! $shared shared with shoppers in ${city.city}.')));
     _schedule();
   }
 

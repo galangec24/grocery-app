@@ -1,13 +1,14 @@
 """Public and shopper endpoints (spec section 9.1)."""
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile
 from pydantic import BaseModel, Field, field_validator, model_validator
 from pymongo.database import Database
 
 from . import comparison as cmp
-from . import catalog, community, live, location, market
+from . import catalog, community, live, location, market, proofs
 from .config import LOGIN_RATE_PER_MINUTE, MAX_MULTI_SEARCH_ITEMS, NEARBY_RADIUS_KM, SEARCH_RATE_PER_MINUTE
 from .db import get_db, utcnow
-from .security import RateLimiter, current_user, issue_token, read_token, verify_password
+from .db import new_id
+from .security import RateLimiter, current_user, hash_password, issue_token, read_token, verify_password
 
 router = APIRouter(prefix="/api/v1")
 limit_search = RateLimiter(SEARCH_RATE_PER_MINUTE)
@@ -161,9 +162,32 @@ class ShelfPrice(BaseModel):
 
 
 @router.post("/market/shelf-prices", status_code=201, dependencies=[Depends(limit_report)])
-def report_shelf_price(body: ShelfPrice, db: Database = Depends(get_db)):
+def report_shelf_price(body: ShelfPrice, user: dict = Depends(current_user), db: Database = Depends(get_db)):
     doc = community.add_report(db, body.name, body.store_name, body.latitude, body.longitude, body.city, body.price)
     return {"accepted": True, "held_for_review": doc["status"] == "flagged"}
+
+
+@router.post("/market/proofs", status_code=201, dependencies=[Depends(limit_report)])
+async def submit_proof(
+    name: str = Form(min_length=2, max_length=160),
+    store_name: str = Form(min_length=2, max_length=120),
+    latitude: float = Form(ge=4, le=22),
+    longitude: float = Form(ge=116, le=127.5),
+    city: str = Form(min_length=2, max_length=80),
+    price: float = Form(gt=0, le=999999),
+    photo: UploadFile = File(),
+    user: dict = Depends(current_user),
+    db: Database = Depends(get_db),
+):
+    content = await photo.read(proofs.MAX_PHOTO_BYTES + 1)
+    doc = proofs.submit(db, user, name, store_name, latitude, longitude, city, price, content)
+    return proofs.proof_json(db, doc, for_admin=False)
+
+
+@router.get("/market/proofs/mine")
+def my_proofs(user: dict = Depends(current_user), db: Database = Depends(get_db)):
+    rows = db.proofs.find({"user_id": user["_id"]}, {"photo": 0}).sort("created_at", -1).limit(50)
+    return [proofs.proof_json(db, p, for_admin=False) for p in rows]
 
 
 class BestStoreRequest(BaseModel):
@@ -370,6 +394,30 @@ def user_json(user: dict) -> dict:
     return {
         "id": user["_id"], "email": user["email"], "full_name": user["full_name"],
         "roles": user["roles"],
+    }
+
+
+class RegisterRequest(BaseModel):
+    email: str = Field(max_length=200, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+    full_name: str = Field(min_length=2, max_length=120)
+    password: str = Field(min_length=10, max_length=200)
+
+
+@router.post("/auth/register", status_code=201, dependencies=[Depends(limit_login)])
+def register(body: RegisterRequest, db: Database = Depends(get_db)):
+    email = body.email.strip().lower()
+    if db.users.find_one({"email": email}):
+        raise HTTPException(409, "An account with this email already exists")
+    user = {
+        "_id": new_id(), "email": email, "full_name": body.full_name.strip(),
+        "password_hash": hash_password(body.password), "status": "active",
+        "roles": [{"role": "shopper", "organization_id": None}], "created_at": utcnow(),
+    }
+    db.users.insert_one(user)
+    return {
+        "access_token": issue_token(user["_id"], "access"),
+        "refresh_token": issue_token(user["_id"], "refresh"),
+        "user": user_json(user),
     }
 
 

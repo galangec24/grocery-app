@@ -47,6 +47,12 @@ Run it by hand with `python -m app.agent` (set `MONGODB_URI` first), or use **Ru
 
 To connect a retailer API: record permission under **Price data sources**, then add the https address. The API returns JSON using the same names as the CSV columns. A token goes in the Render variable `SOURCE_<ID>_TOKEN`, for example `SOURCE_WALTERMART_TOKEN`.
 
+## Crowdsourced prices
+
+Registered shoppers share prices, optionally with a photo of a receipt or shelf tag. Each proof is compared with official prices, that store's last price and the typical price in the city. It is published when an administrator approves it, correcting the price if needed, or automatically when two different shoppers agree within 5% at the same store. Photos are visible to administrators only. They are deleted on rejection, and 30 days after approval.
+
+SM Markets is registered but blocked: its `robots.txt` disallows catalog, product and search pages, so it needs a partnership or data feed.
+
 ## Automation
 
 | Trigger | What happens |

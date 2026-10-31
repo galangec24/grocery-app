@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { BasketLine, BasketResponse, postJson, Suggestion } from "../api";
+import { shrinkPhoto, useAccount } from "../account";
+import { api, BasketLine, BasketResponse, postJson, Suggestion } from "../api";
 import { useBudget } from "../budget";
 import { addItems, deleteDraft, Draft, DraftItem, duplicateDraft, MAX_ITEMS, newDraft, parseItems, readDrafts, saveDraft, useDrafts } from "../drafts";
 import { peso } from "../format";
@@ -124,6 +125,9 @@ function ListEditor({ draft, onChange, header, footer }: {
   const [purchaseDate, setPurchaseDate] = useState(() => new Date());
   const [storeIndex, setStoreIndex] = useState("");
   const [shareNote, setShareNote] = useState<string | null>(null);
+  const [proof, setProof] = useState<File | null>(null);
+  const [sharing, setSharing] = useState(false);
+  const { user, ask } = useAccount();
   const [savedTrip, setSavedTrip] = useState(false);
   const [result, setResult] = useState<BasketResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -218,15 +222,31 @@ function ListEditor({ draft, onChange, header, footer }: {
     const store = city?.stores[Number(storeIndex)];
     if (!store || !city) return;
     const priced = draft.items.filter((i) => i.customPrice && i.customPrice > 0);
+    setSharing(true);
+    setShareNote(null);
+    const place = { store_name: store.name, latitude: store.latitude, longitude: store.longitude, city: city.city };
     try {
-      const results = await Promise.all(priced.map((item) => postJson<{ held_for_review: boolean }>("/market/shelf-prices", {
-        name: lineFor(item)?.label ?? item.query, store_name: store.name,
-        latitude: store.latitude, longitude: store.longitude, city: city.city, price: item.customPrice,
-      })));
-      const held = results.filter((r) => r.held_for_review).length;
-      setShareNote(`Thanks! ${priced.length - held} ${priced.length - held === 1 ? "price" : "prices"} shared with shoppers in ${city.city}.${held ? ` ${held} held for review.` : ""}`);
+      if (proof) {
+        const photo = await shrinkPhoto(proof);
+        await Promise.all(priced.map((item) => {
+          const form = new FormData();
+          Object.entries({ ...place, name: lineFor(item)?.label ?? item.query, price: item.customPrice }).forEach(([k, v]) => form.set(k, String(v)));
+          form.set("photo", photo, "proof.jpg");
+          return api("/market/proofs", { method: "POST", body: form }, "shopper");
+        }));
+        setShareNote(`Thanks! ${priced.length} ${priced.length === 1 ? "price" : "prices"} sent with your proof. You can follow them in Reports.`);
+        setProof(null);
+      } else {
+        const results = await Promise.all(priced.map((item) => postJson<{ held_for_review: boolean }>(
+          "/market/shelf-prices", { ...place, name: lineFor(item)?.label ?? item.query, price: item.customPrice }, "shopper",
+        )));
+        const held = results.filter((r) => r.held_for_review).length;
+        setShareNote(`Thanks! ${priced.length - held} shared with shoppers in ${city.city}.${held ? ` ${held} held for review.` : ""} Add a photo next time to get them verified.`);
+      }
     } catch (e) {
       setShareNote((e as Error).message);
+    } finally {
+      setSharing(false);
     }
   }
 
@@ -295,13 +315,19 @@ function ListEditor({ draft, onChange, header, footer }: {
             <strong>Help other shoppers</strong>
             {city && city.stores.length > 0 ? (
               <>
-                <p className="hint">Tell us where you saw these prices. Only the item, price and store are shared.</p>
+                <p className="hint">Tell us where you saw these prices, and add a photo of the receipt or shelf tag to get them verified. Cover any card numbers or personal details. Only administrators see your photo.</p>
                 <div className="share-row">
                   <select aria-label="Store where you saw these prices" value={storeIndex} onChange={(e) => { setStoreIndex(e.target.value); setShareNote(null); }}>
                     <option value="">Choose the store</option>
                     {city.stores.map((store, index) => <option key={`${store.name}${store.latitude}`} value={index}>{store.name} ({store.distance_km.toFixed(1)} km)</option>)}
                   </select>
-                  <button className="btn primary with-icon" disabled={storeIndex === ""} onClick={sharePrices}><Icon name="send" />Share prices</button>
+                  <label className={`proof-pick${proof ? " on" : ""}`} title="Add a photo of the receipt or shelf tag">
+                    <Icon name={proof ? "check" : "upload"} />{proof ? "Photo added" : "Add photo"}
+                    <input type="file" accept="image/*" capture="environment" hidden aria-label="Proof photo" onChange={(e) => setProof(e.target.files?.[0] ?? null)} />
+                  </label>
+                  {user
+                    ? <button className="btn primary with-icon" disabled={storeIndex === "" || sharing} onClick={sharePrices}><Icon name="send" />{sharing ? "Sending…" : "Share prices"}</button>
+                    : <button className="btn primary" onClick={ask}>Sign in to share</button>}
                 </div>
               </>
             ) : <p className="hint">Find your city on the Prices tab to share these prices.</p>}
