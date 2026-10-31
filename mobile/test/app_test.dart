@@ -35,6 +35,9 @@ AppState fakeState() => AppState(
       liveUpdates: false,
       api: Api(
         client: MockClient((request) async {
+          if (request.url.path.endsWith('/market/malls')) {
+            return http.Response(jsonEncode([{'name': 'SM', 'prices': 0, 'stores': 0}]), 200);
+          }
           if (request.url.path.endsWith('/market/catalog')) {
             return http.Response(
               jsonEncode(catalogEmpty ? [] : [

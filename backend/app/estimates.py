@@ -33,6 +33,7 @@ GUIDES = [
     (r"conditioner.*(fabric|laundry)|fabric conditioner|fabcon", 1000, 170), (r"shampoo|conditioner|hair", 180, 150),
     (r"toothpaste|tooth paste", 150, 130), (r"mouthwash", 250, 150), (r"toothbrush", None, 70),
     (r"body wash|shower gel", 400, 220), (r"bar soap|\bsoap\b", 135, 55),
+    (r"body ?care|body milk|body butter|body scrub|hand cream", 200, 220),
     (r"sunscreen|sunblock|spf", 50, 350), (r"serum|essence|toner", 30, 450), (r"lotion|moisturi[sz]er|\bcream\b.*(face|skin|hand|body)|face cream", 200, 220),
     (r"lipstick|lip tint|mascara|foundation|concealer|eyeliner|blush", None, 350), (r"nail polish", None, 90),
     (r"diaper|\bpants\b", None, 600), (r"baby powder", 200, 120), (r"infant|formula|enfagrow|cerelac", 1500, 1300),

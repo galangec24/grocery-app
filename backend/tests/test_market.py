@@ -232,6 +232,7 @@ def test_a_store_wide_label_does_not_decide_the_guide():
     plain = estimates.guide("Mystery Face Thing", "Beauty & Fragrance", "beauty & fragrance")
     perfume = estimates.guide("Bench Eau de Toilette 75ml", "Beauty & Fragrance", "beauty & fragrance")
     assert plain["price"] < perfume["price"]
+    assert estimates.guide("Avon Natural Bodycare Papaya & Soy Milk Lotion")["price"] == 220
 
 
 def test_official_price_wins_over_the_catalog(loaded, client):

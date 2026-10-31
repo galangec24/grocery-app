@@ -56,17 +56,17 @@ class _PricesScreenState extends State<PricesScreen> {
     setState(() => _error = null);
     try {
       final rows = await state.api.prices(island: state.city?.island);
-      final malls = await state.api.malls(state.city?.city);
-      if (mounted) {
-        setState(() {
-          _rows = rows;
-          _malls = malls;
-        });
-      }
-      await _loadMall();
+      if (mounted) setState(() => _rows = rows);
     } on ApiException catch (error) {
       if (mounted) setState(() => _error = error.message);
     }
+    try {  // Mall filtering is optional, so it never holds back the price list.
+      final malls = await state.api.malls(state.city?.city);
+      if (mounted) setState(() => _malls = malls);
+    } on ApiException {
+      if (mounted) setState(() => _malls = const []);
+    }
+    if (mounted) await _loadMall();
   }
 
   Future<void> _loadMall() async {
