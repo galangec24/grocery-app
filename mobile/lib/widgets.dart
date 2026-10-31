@@ -172,6 +172,54 @@ class HeroHeader extends StatelessWidget {
   }
 }
 
+/// A product photo, or a neutral tile when none exists.
+class ProductPhoto extends StatelessWidget {
+  const ProductPhoto({super.key, required this.url, this.size = 46});
+
+  final String? url;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final fallback = Container(
+      width: size,
+      height: size,
+      color: const Color(0xFFE8F1E4),
+      child: Icon(Icons.shopping_basket_outlined, color: const Color(0xFF1C7A43), size: size * 0.5),
+    );
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(10),
+      child: url == null
+          ? fallback
+          : Image.network(url!, width: size, height: size, fit: BoxFit.contain, errorBuilder: (_, __, ___) => fallback),
+    );
+  }
+}
+
+class SuggestionTile extends StatelessWidget {
+  const SuggestionTile({super.key, required this.item, required this.onTap});
+
+  final Suggestion item;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final price = item.price;
+    return ListTile(
+      dense: true,
+      contentPadding: EdgeInsets.zero,
+      leading: ProductPhoto(url: item.imageUrl),
+      title: Text(item.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+      subtitle: Text([if (item.size.isNotEmpty) item.size, item.category].join(' · '), maxLines: 1, overflow: TextOverflow.ellipsis),
+      trailing: Text(
+        price == null ? 'Add a price' : '${item.priceLabel?.startsWith('Estimate') == true ? '≈ ' : ''}${peso(price)}',
+        style: const TextStyle(fontWeight: FontWeight.w700, color: Color(0xFF14532D)),
+      ),
+      onTap: onTap,
+    );
+  }
+}
+
 /// Tips a card back in perspective while it is pressed.
 class PressTilt extends StatefulWidget {
   const PressTilt({super.key, required this.child});
@@ -223,6 +271,14 @@ Future<void> showPriceDetails(BuildContext context, PriceRow row, VoidCallback o
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
           Text(row.isSrp ? 'Official standard price' : 'Daily market price',
               style: const TextStyle(color: Color(0xFF1C7A43), fontWeight: FontWeight.w700)),
+          FutureBuilder<List<Suggestion>>(
+            future: AppScope.of(context).api.suggest(row.commodity),
+            builder: (context, snapshot) {
+              final found = snapshot.data ?? const <Suggestion>[];
+              final url = found.map((s) => s.imageUrl).whereType<String>().firstOrNull;
+              return Center(child: Padding(padding: const EdgeInsets.symmetric(vertical: 8), child: ProductPhoto(url: url, size: 120)));
+            },
+          ),
           Text(row.commodity, style: Theme.of(context).textTheme.headlineSmall),
           if (row.specification.isNotEmpty) Text(row.specification),
           const SizedBox(height: 8),

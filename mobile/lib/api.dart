@@ -106,6 +106,29 @@ class CatalogItem {
   final String keywords;
 }
 
+class Suggestion {
+  Suggestion.fromJson(Map<String, dynamic> json)
+      : id = json['id'] as String,
+        name = json['name'] as String,
+        size = (json['size'] as String?) ?? '',
+        category = json['category'] as String,
+        imageUrl = json['image_url'] as String?,
+        price = (json['price'] as num?)?.toDouble(),
+        priceLabel = json['price_label'] as String?,
+        priceId = json['price_id'] as String?;
+
+  final String id;
+  final String name;
+  final String size;
+  final String category;
+  final String? imageUrl;
+  final double? price;
+  final String? priceLabel;
+  final String? priceId;
+
+  String get label => size.isEmpty ? name : '$name $size';
+}
+
 class StoreOffer {
   StoreOffer.fromJson(Map<String, dynamic> json)
       : storeName = json['store_name'] as String,
@@ -237,6 +260,16 @@ class Api {
     final data = await _send(
         () => _client.get(_uri('/location/resolve', {'city': city})));
     return CityInfo.fromJson(data as Map<String, dynamic>);
+  }
+
+  Future<List<Suggestion>> suggest(String query, {String? island, String? city}) async {
+    final data = await _send(() => _client.get(_uri('/market/suggest', {
+          'q': query,
+          'limit': '6',
+          if (island != null) 'island': island,
+          if (city != null) 'city': city,
+        })));
+    return (data as List).map((s) => Suggestion.fromJson(s as Map<String, dynamic>)).toList();
   }
 
   Future<StoreOffer?> bestStore(List<String> items, String? city, double? latitude, double? longitude) async {

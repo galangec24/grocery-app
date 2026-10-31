@@ -96,3 +96,13 @@ def test_road_route_between_two_cebu_points():
 def test_brand_catalog_finds_piatos_and_mega():
     assert any("Piatos" in item["name"] for item in get("/market/catalog", q="piatos"))
     assert any("Mega Sardines" in item["name"] for item in get("/market/catalog", q="mega sardines"))
+
+
+@pytest.mark.parametrize("query,word", [("itlog", "egg"), ("bigas", "rice"), ("sardnes", "sardine")])
+def test_search_understands_tagalog_and_typos(query, word):
+    found = get("/market/suggest", q=query)
+    assert found and word in " ".join(f'{r["name"]} {r["category"]}' for r in found).lower()
+
+
+def test_aisles_come_from_the_data():
+    assert len(get("/market/aisles")) >= 5

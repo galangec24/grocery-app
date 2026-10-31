@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { BasketLine, BasketResponse, postJson } from "../api";
+import { BasketLine, BasketResponse, postJson, Suggestion } from "../api";
 import { useBudget } from "../budget";
 import { addItems, deleteDraft, Draft, DraftItem, duplicateDraft, MAX_ITEMS, newDraft, parseItems, readDrafts, saveDraft, useDrafts } from "../drafts";
 import { peso } from "../format";
+import { Icon, IconButton } from "../icons";
 import { savePurchase } from "../purchases";
 import { useLocation } from "../location";
 import { navigate } from "../router";
+import { SearchBox } from "../SearchBox";
 import { BestStore } from "./BestStore";
 import { Calculator } from "./Calculator";
 import { DateTimePicker } from "./DateTimePicker";
@@ -15,10 +17,10 @@ import { Receipt } from "./Receipt";
 export function QuickCompare() {
   const [draft, setDraft] = useState<Draft>(() => newDraft());
   return (
-    <ListEditor draft={draft} onChange={setDraft} bulk
+    <ListEditor draft={draft} onChange={setDraft}
       footer={draft.items.length > 0 && (
-        <button className="btn block" onClick={() => navigate(`/shop/drafts/${saveDraft({ ...draft, name: draft.name || "My list" }).id}`)}>
-          Save as draft
+        <button className="btn block with-icon" onClick={() => navigate(`/shop/drafts/${saveDraft({ ...draft, name: draft.name || "My list" }).id}`)}>
+          <Icon name="bookmark" />Save as draft
         </button>
       )} />
   );
@@ -37,7 +39,7 @@ export function DraftList() {
     <>
       <p className="muted intro">Lists you're still working on, saved on this device.</p>
       <div className="draft-tools">
-        <button className="btn primary" onClick={() => navigate(`/shop/drafts/${saveDraft(newDraft()).id}`)}>New draft</button>
+        <button className="btn primary with-icon" onClick={() => navigate(`/shop/drafts/${saveDraft(newDraft()).id}`)}><Icon name="plus" />New draft</button>
         {drafts.length > 3 && <input type="search" value={term} onChange={(e) => setTerm(e.target.value)} placeholder="Find a draft" aria-label="Find a draft" />}
       </div>
       {drafts.length === 0 && <p className="muted empty">No drafts yet. Start one, or save a list from My list.</p>}
@@ -54,13 +56,13 @@ export function DraftList() {
               <div className="draft-actions">
                 {confirming === d.id ? (
                   <>
-                    <button className="mini danger" onClick={() => { deleteDraft(d.id); setConfirming(null); reload(); }}>Delete</button>
-                    <button className="mini" onClick={() => setConfirming(null)}>Keep</button>
+                    <IconButton icon="check" label="Confirm delete" className="danger" onClick={() => { deleteDraft(d.id); setConfirming(null); reload(); }} />
+                    <IconButton icon="close" label="Keep" onClick={() => setConfirming(null)} />
                   </>
                 ) : (
                   <>
-                    <button className="mini" onClick={() => { duplicateDraft(d); reload(); }}>Duplicate</button>
-                    <button className="mini" aria-label={`Delete ${d.name || "untitled draft"}`} onClick={() => setConfirming(d.id)}>Delete</button>
+                    <IconButton icon="copy" label="Duplicate" onClick={() => { duplicateDraft(d); reload(); }} />
+                    <IconButton icon="trash" label={`Delete ${d.name || "untitled draft"}`} onClick={() => setConfirming(d.id)} />
                   </>
                 )}
               </div>
@@ -111,8 +113,8 @@ export function DraftEditor({ id }: { id: string }) {
   );
 }
 
-function ListEditor({ draft, onChange, bulk, header, footer }: {
-  draft: Draft; onChange: (draft: Draft) => void; bulk?: boolean; header?: React.ReactNode; footer?: React.ReactNode;
+function ListEditor({ draft, onChange, header, footer }: {
+  draft: Draft; onChange: (draft: Draft) => void; header?: React.ReactNode; footer?: React.ReactNode;
 }) {
   const { city } = useLocation();
   const { budget, setSpent } = useBudget();
@@ -161,10 +163,16 @@ function ListEditor({ draft, onChange, bulk, header, footer }: {
 
   useEffect(() => () => setSpent(0), [setSpent]);
 
-  const add = () => {
-    const parsed = parseItems(text);
+  const addText = (typed: string) => {
+    const parsed = parseItems(typed);
     if (!parsed.length) return;
     onChange(addItems(draft, parsed));
+    setText("");
+  };
+
+  const addSuggestion = (item: Suggestion) => {
+    const label = [item.name, item.size].filter(Boolean).join(" ");
+    onChange(addItems(draft, [{ query: label, quantity: 1, priceId: item.price_id ?? undefined, label }]));
     setText("");
   };
 
@@ -231,14 +239,9 @@ function ListEditor({ draft, onChange, bulk, header, footer }: {
       <section className="panel list-panel">
         {header}
         <div className="adder">
-          {bulk ? (
-            <textarea rows={3} value={text} placeholder={"bear brand\n2 x tilapia\npiatos, mega sardines"} aria-label="Items to add" onChange={(e) => setText(e.target.value)} />
-          ) : (
-            <input type="text" value={text} placeholder="Add items, like piatos, 2 x tilapia" aria-label="Items to add"
-              onChange={(e) => setText(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); add(); } }} />
-          )}
-          <button className="btn primary" onClick={add} disabled={!text.trim() || full}>Add</button>
+          <SearchBox value={text} onChange={setText} onPick={addSuggestion} onSubmit={addText}
+            label="Add items" placeholder="Search itlog, Piatos, or type a list with commas" />
+          <IconButton icon="plus" label="Add" className="primary" onClick={() => addText(text)} disabled={!text.trim() || full} />
         </div>
         {full && <p className="hint">A list can hold up to {MAX_ITEMS} items.</p>}
         {draft.items.length === 0 && <p className="muted empty">Nothing here yet. Add your first item above.</p>}
@@ -247,7 +250,7 @@ function ListEditor({ draft, onChange, bulk, header, footer }: {
           <ul className="items">
             {draft.items.map((item) => {
               const line = lineFor(item);
-              const needsPrice = line?.status === "needs_price" || line?.status === "no_match" || line?.status === "reported" || item.customPrice !== undefined;
+              const needsPrice = line?.status === "needs_price" || line?.status === "no_match" || line?.status === "reported" || line?.status === "estimated" || item.customPrice !== undefined;
               return (
                 <li key={item.id} className={item.checked ? "done" : ""}>
                   <input type="checkbox" checked={!!item.checked} aria-label={`${item.query} in cart`}
@@ -256,7 +259,8 @@ function ListEditor({ draft, onChange, bulk, header, footer }: {
                     {line?.status === "custom" ? item.query : line?.label ?? item.query}
                     {line?.selected && <small>{peso(line.selected.price)} per {line.selected.unit}</small>}
                     {line?.status === "needs_price" && <small>No price yet. Be the first to enter it.</small>}
-                    {line?.status === "reported" && line.report && <small className="reported">₱{line.report.price.toFixed(2)} at {line.report.store_name}, {line.report.origin === "Shopper report" ? "reported by a shopper" : `${line.report.origin}, verified ${new Date(line.report.reported_at).toLocaleDateString("en-PH", { dateStyle: "medium" })}`}</small>}
+                    {line?.status === "estimated" && line.report && <small className="estimated">≈ ₱{line.report.price.toFixed(2)}. {line.report.origin}. Enter the shelf price if you know it.</small>}
+                    {line?.status === "reported" && line.report && <small className="reported">₱{line.report.price.toFixed(2)} at {line.report.store_name}{line.report.elsewhere && line.report.city ? ` in ${line.report.city}` : ""}. {line.report.origin}{line.report.reported_at ? `, ${new Date(line.report.reported_at).toLocaleDateString("en-PH", { dateStyle: "medium" })}` : ""}</small>}
                     {line?.status === "no_match" && <small>Not in our lists. Enter a price to count it.</small>}
                     {line?.status === "matched" && line.candidates.length > 1 && (
                       <select className="swap" aria-label={`Change ${item.query}`} value={line.selected!.id} onChange={(e) => pick(line, e.target.value)}>
@@ -277,7 +281,7 @@ function ListEditor({ draft, onChange, bulk, header, footer }: {
                     <b>{item.quantity}</b>
                     <button aria-label={`More ${item.query}`} disabled={item.quantity >= 999} onClick={() => update(item.id, { quantity: item.quantity + 1 })}>+</button>
                   </span>
-                  <button className="mini" aria-label={`Remove ${item.query}`} onClick={() => remove(item.id)}>✕</button>
+                  <IconButton icon="trash" label={`Remove ${item.query}`} onClick={() => remove(item.id)} />
                 </li>
               );
             })}
@@ -295,7 +299,7 @@ function ListEditor({ draft, onChange, bulk, header, footer }: {
                     <option value="">Choose the store</option>
                     {city.stores.map((store, index) => <option key={`${store.name}${store.latitude}`} value={index}>{store.name} ({store.distance_km.toFixed(1)} km)</option>)}
                   </select>
-                  <button className="btn primary" disabled={storeIndex === ""} onClick={sharePrices}>Share prices</button>
+                  <button className="btn primary with-icon" disabled={storeIndex === ""} onClick={sharePrices}><Icon name="send" />Share prices</button>
                 </div>
               </>
             ) : <p className="hint">Find your city on the Prices tab to share these prices.</p>}
@@ -307,17 +311,17 @@ function ListEditor({ draft, onChange, bulk, header, footer }: {
 
       <aside className="side">
         <Receipt draft={draft} data={result} inCart={inCart} />
-        <BestStore items={draft.items.map((i) => i.query)} />
+        <BestStore items={draft.items.map((i) => i.query)} total={result?.total ?? 0} official={result?.lines.filter((l) => l.status === "matched").length ?? 0} />
         {result && result.total > 0 && (
           <div className="save-trip">
             <DateTimePicker value={purchaseDate} onChange={(date) => { setPurchaseDate(date); setSavedTrip(false); }} />
-            <button className="btn primary" disabled={savedTrip} onClick={saveTrip}>{savedTrip ? "Saved to Reports" : "Save this purchase"}</button>
+            <button className="btn primary with-icon" disabled={savedTrip} onClick={saveTrip}><Icon name={savedTrip ? "check" : "save"} />{savedTrip ? "Saved to Reports" : "Save this purchase"}</button>
           </div>
         )}
         {draft.items.length > 0 && (
           <div className="receipt-actions">
-            <button className="btn" onClick={() => window.print()}>Print</button>
-            <button className="btn" onClick={share}>{copied ? "Copied" : "Share list"}</button>
+            <IconButton icon="print" label="Print receipt" onClick={() => window.print()} />
+            <IconButton icon={copied ? "check" : "share"} label={copied ? "Copied" : "Share list"} onClick={share} />
           </div>
         )}
         <Calculator onAdd={(name, price) => onChange(addItems(draft, [{ query: name, quantity: 1, customPrice: price }]))} />

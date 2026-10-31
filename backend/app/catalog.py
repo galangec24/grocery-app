@@ -8,6 +8,7 @@ holds names and sizes, never invented prices.
 import re
 
 from . import comparison as cmp
+from . import search
 
 _PRODUCTS = {
     "Junk Food": {
@@ -193,22 +194,21 @@ def _public(doc: dict) -> dict:
     }
 
 
-def _criteria(query: str) -> dict:
-    # Tokens are lowercase letters and digits, escaped so they can't act as patterns.
-    clauses = [{"status": "active"}]
-    for token in cmp.tokenize(query):
-        word = re.escape(token[:-1] if token.endswith("s") and len(token) > 3 else token)
-        clauses.append({"keywords": {"$regex": word}})
-    return {"$and": clauses}
-
-
 def find(db, query: str, limit: int = 50, offset: int = 0) -> list[dict]:
-    rows = db.catalog_items.find(_criteria(query)).sort("name", 1).skip(offset).limit(limit)
+    criteria = search.catalog_criteria(search.expand(db, query))
+    rows = db.catalog_items.find(criteria).sort("name", 1).skip(offset).limit(limit)
     return [_public(doc) for doc in rows]
 
 
+def closest(db, query: str) -> list[dict]:
+    """The single best match, judged by the product's name rather than the alphabet."""
+    groups = search.expand(db, query)
+    rows = find(db, query, 80)
+    return sorted(rows, key=lambda item: -search.score(groups, f'{item["name"]} {item["size"]}'))[:1]
+
+
 def count(db, query: str) -> int:
-    return db.catalog_items.count_documents(_criteria(query))
+    return db.catalog_items.count_documents(search.catalog_criteria(search.expand(db, query)))
 
 
 def custom_items(db) -> list[dict]:

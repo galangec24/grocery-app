@@ -74,8 +74,8 @@ export interface CatalogItem {
 export interface BasketLine {
   query: string;
   quantity: number;
-  status: "matched" | "custom" | "reported" | "needs_price" | "no_match";
-  report: { store_name: string; price: number; reported_at: string; origin: string } | null;
+  status: "matched" | "custom" | "reported" | "estimated" | "needs_price" | "no_match";
+  report: { store_name?: string; city?: string; price: number; reported_at?: string; origin: string; elsewhere?: boolean } | null;
   label: string;
   selected: PriceRow | null;
   unit_price: number;
@@ -108,6 +108,19 @@ export interface CityInfo {
   stores_available: boolean;
   stores: CityStore[];
   attribution: string;
+}
+
+export interface Suggestion {
+  id: string;
+  kind: "official" | "product";
+  name: string;
+  size: string;
+  category: string;
+  image_url: string | null;
+  price: number | null;
+  unit: string | null;
+  price_label: string | null;
+  price_id: string | null;
 }
 
 export interface PricePoint {

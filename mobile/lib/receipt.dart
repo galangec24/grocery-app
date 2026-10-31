@@ -55,7 +55,7 @@ class ReceiptCard extends StatelessWidget {
                   child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                     Text(line.status == 'custom' ? line.query : line.label,
                         style: _mono.copyWith(fontWeight: FontWeight.w700)),
-                    _Row('${line.quantity} x ${line.unitPrice.toStringAsFixed(2)}${line.status == 'custom' ? ' *' : line.status == 'reported' ? ' †' : ''}',
+                    _Row('${line.quantity} x ${line.unitPrice.toStringAsFixed(2)}${line.status == 'custom' ? ' *' : line.status == 'reported' ? ' †' : line.status == 'estimated' ? ' ≈' : ''}',
                         line.lineTotal.toStringAsFixed(2)),
                   ]),
                 ),
@@ -68,7 +68,7 @@ class ReceiptCard extends StatelessWidget {
                 if (budget != null) _Row('BUDGET', peso(budget)),
                 if (left != null) _Row(left < 0 ? 'OVER BY' : 'LEFT', peso(left.abs()), alert: left < 0),
                 const _Rule(),
-                const Text('* Your shelf price. † Reported price. Others are official prices. All may differ at checkout.',
+                const Text('* Your shelf price. † Reported store price. ≈ Estimate from similar items. Others are official. All may differ at checkout.',
                     style: TextStyle(fontFamily: 'monospace', fontSize: 10.5, color: Color(0xFF68665C))),
               ],
             ]),

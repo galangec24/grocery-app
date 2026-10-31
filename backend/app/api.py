@@ -73,10 +73,26 @@ def market_prices(
     island: str | None = Island,
     db: Database = Depends(get_db),
 ):
-    rows = market.search(market.price_rows(db, source, island), q)
+    rows = market.search_rows(db, market.price_rows(db, source, island), q)
     if category:
         rows = [r for r in rows if r["category"] == category]
     return {"count": len(rows), "results": rows, "generated_at": cmp.iso(utcnow())}
+
+
+@router.get("/market/suggest", dependencies=[Depends(limit_search)])
+def market_suggest(
+    q: str = Query(min_length=1, max_length=120),
+    island: str | None = Island,
+    city: str | None = Query(None, max_length=80),
+    limit: int = Query(8, ge=1, le=20),
+    db: Database = Depends(get_db),
+):
+    return market.suggestions(db, q, island, city, limit)
+
+
+@router.get("/market/aisles")
+def market_aisles(db: Database = Depends(get_db)):
+    return market.aisles(db)
 
 
 @router.get("/market/catalog", dependencies=[Depends(limit_search)])
@@ -122,9 +138,10 @@ class BasketRequest(BaseModel):
 
 @router.post("/market/basket", dependencies=[Depends(limit_search)])
 def market_basket(body: BasketRequest, db: Database = Depends(get_db)):
+    nearby = community.current(db, body.city)
     return market.basket(
-        market.price_rows(db, None, body.island), [i.model_dump() for i in body.items],
-        lambda query: catalog.find(db, query, 1), community.current(db, body.city),
+        db, market.price_rows(db, None, body.island), [i.model_dump() for i in body.items],
+        lambda query: catalog.closest(db, query), nearby, community.current(db) if body.city else [],
     )
 
 

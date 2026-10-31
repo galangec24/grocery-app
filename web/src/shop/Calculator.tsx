@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Icon, IconButton } from "../icons";
 
 type Op = "+" | "-" | "×" | "÷";
 
@@ -46,7 +47,7 @@ export function Calculator({ onAdd }: { onAdd: (name: string, price: number) => 
   const value = Number(entry);
   const canAdd = name.trim() !== "" && Number.isFinite(value) && value > 0;
 
-  if (!open) return <button className="btn block" onClick={() => setOpen(true)}>Open calculator</button>;
+  if (!open) return <IconButton icon="calc" label="Open calculator" onClick={() => setOpen(true)} />;
 
   return (
     <section className="calculator" aria-label="Calculator">
@@ -63,7 +64,7 @@ export function Calculator({ onAdd }: { onAdd: (name: string, price: number) => 
       </div>
       <div className="calc-add">
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Item name" aria-label="Item name for this amount" />
-        <button className="btn primary" disabled={!canAdd} onClick={() => { onAdd(name.trim(), value); setName(""); clear(); }}>Add to receipt</button>
+        <button className="btn primary with-icon" disabled={!canAdd} onClick={() => { onAdd(name.trim(), value); setName(""); clear(); }}><Icon name="plus" />Add to receipt</button>
       </div>
       <button className="link" onClick={() => setOpen(false)}>Hide calculator</button>
     </section>

@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { api, CatalogItem, PricePoint, PriceRow } from "../api";
+import { api, CatalogItem, PricePoint, PriceRow, query, Suggestion } from "../api";
+import { Icon } from "../icons";
+import { ProductImage } from "../SearchBox";
 import { longDate, peso } from "../format";
 
 export type ModalSubject = { kind: "price"; row: PriceRow } | { kind: "brand"; item: CatalogItem };
@@ -71,16 +73,28 @@ export function PriceModal({ subject, onClose, onAdd, added }: {
   subject: ModalSubject; onClose: () => void; onAdd: () => void; added: boolean;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
+  const [photo, setPhoto] = useState(subject.kind === "brand" ? subject.item.image_url : null);
+  const name = subject.kind === "price" ? subject.row.commodity : subject.item.name;
+  const category = subject.kind === "price" ? subject.row.category : subject.item.category;
 
   useEffect(() => {
     dialog.current?.showModal();
   }, []);
 
+  useEffect(() => {
+    if (photo) return;
+    api<Suggestion[]>(`/market/suggest${query({ q: name, limit: 3 })}`)
+      .then((found) => setPhoto(found.find((f) => f.image_url)?.image_url ?? null))
+      .catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [name]);
+
   return (
     <dialog ref={dialog} className="modal" onClose={onClose}
       onClick={(e) => { if (e.target === dialog.current) dialog.current?.close(); }}>
       <div className="modal-card">
-        <button className="modal-close" aria-label="Close" onClick={() => dialog.current?.close()}>✕</button>
+        <button className="modal-close" aria-label="Close" onClick={() => dialog.current?.close()}><Icon name="close" size={18} /></button>
+        <ProductImage src={photo} category={`${category} ${name}`} large />
         {subject.kind === "price" ? (
           <>
             <p className="modal-kind">{subject.row.kind === "srp" ? "Official standard price" : "Daily market price"}</p>
@@ -109,7 +123,7 @@ export function PriceModal({ subject, onClose, onAdd, added }: {
             <BrandPrices item={subject.item} />
           </>
         )}
-        <button className="btn primary block" onClick={onAdd} disabled={added}>{added ? "Added to draft" : "Add to draft"}</button>
+        <button className="btn primary block with-icon" onClick={onAdd} disabled={added}><Icon name={added ? "check" : "plus"} />{added ? "Added to draft" : "Add to draft"}</button>
       </div>
     </dialog>
   );

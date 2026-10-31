@@ -5,7 +5,7 @@ os.environ["FETCH_MARKET_DATA"] = "false"
 import pytest
 from fastapi.testclient import TestClient
 
-from app import catalog, ingestion
+from app import catalog, ingestion, market, search
 from app.api import limit_login, limit_report, limit_search
 from app.db import database, ensure_indexes
 from app.main import app
@@ -22,6 +22,8 @@ def client(db):
     for name in db.list_collection_names():
         db.drop_collection(name)
     ensure_indexes(db)
+    search.reset_vocabulary()
+    market.reset_caches()
     limit_search.hits.clear()
     limit_login.hits.clear()
     limit_report.hits.clear()

@@ -61,7 +61,7 @@ function RouteMap({ store }: { store: { store_name: string; latitude: number; lo
   );
 }
 
-export function BestStore({ items }: { items: string[] }) {
+export function BestStore({ items, total, official }: { items: string[]; total: number; official: number }) {
   const { city, position } = useLocation();
   const [data, setData] = useState<BestStores | null>(null);
   const signature = useMemo(() => JSON.stringify(items), [items]);
@@ -81,41 +81,51 @@ export function BestStore({ items }: { items: string[] }) {
 
   if (items.length === 0) return null;
   const best = data?.best;
+  const closest = city?.stores[0];
+
+  if (!best && closest) {
+    return (
+      <section className="best-store">
+        <p className="eyebrow">Your closest store</p>
+        <h3>{closest.name}</h3>
+        <p className="best-total">{peso(total)}</p>
+        <p className="best-meta">
+          {closest.type} · {closest.distance_km.toFixed(1)} km away
+          {official > 0 ? ` · official SRPs apply to ${official} ${official === 1 ? "item" : "items"}` : ""}
+        </p>
+        <RouteMap store={{ store_name: closest.name, latitude: closest.latitude, longitude: closest.longitude }} />
+        <p className="hint">The cheapest store will appear here once store prices near you are known.</p>
+      </section>
+    );
+  }
+  if (!best) return null;
 
   return (
     <section className="best-store">
       <p className="eyebrow">Cheapest store for your list</p>
-      {!best ? (
-        <p className="best-empty">
-          No shopper has reported these prices{city ? ` in ${city.city}` : ""} yet. Share what you see below, and the cheapest store will appear here for everyone.
-        </p>
-      ) : (
-        <>
-          <h3>{best.store_name}</h3>
-          <p className="best-total">{peso(best.total)}</p>
-          <p className="best-meta">
-            {best.items_found} of {data!.items_total} items at this store
-            {best.distance_km !== null && ` · ${best.distance_km.toFixed(1)} km away`}
-          </p>
-          <RouteMap store={best} />
+      <h3>{best.store_name}</h3>
+      <p className="best-total">{peso(best.total)}</p>
+      <p className="best-meta">
+        {best.items_found} of {data!.items_total} items at this store
+        {best.distance_km !== null && ` · ${best.distance_km.toFixed(1)} km away`}
+      </p>
+      <RouteMap store={best} />
+      <ul className="best-lines">
+        {best.lines.map((line) => (
+          <li key={line.query}><span>{line.item_name}</span><span>{peso(line.price)}</span><small>verified {timeAgo(line.reported_at)}</small></li>
+        ))}
+      </ul>
+      {data!.stores.length > 1 && (
+        <details>
+          <summary>Compare {data!.stores.length} stores</summary>
           <ul className="best-lines">
-            {best.lines.map((line) => (
-              <li key={line.query}><span>{line.item_name}</span><span>{peso(line.price)}</span><small>reported {timeAgo(line.reported_at)}</small></li>
+            {data!.stores.map((s) => (
+              <li key={`${s.store_name}${s.latitude}`}><span>{s.store_name}</span><span>{peso(s.total)}</span><small>{s.items_found} items{s.distance_km !== null ? ` · ${s.distance_km.toFixed(1)} km` : ""}</small></li>
             ))}
           </ul>
-          {data!.stores.length > 1 && (
-            <details>
-              <summary>Compare {data!.stores.length} stores</summary>
-              <ul className="best-lines">
-                {data!.stores.map((s) => (
-                  <li key={`${s.store_name}${s.latitude}`}><span>{s.store_name}</span><span>{peso(s.total)}</span><small>{s.items_found} items{s.distance_km !== null ? ` · ${s.distance_km.toFixed(1)} km` : ""}</small></li>
-                ))}
-              </ul>
-            </details>
-          )}
-          <p className="hint">Based on prices other shoppers reported in the last 30 days. Prices may have changed.</p>
-        </>
+        </details>
       )}
+      <p className="hint">Based on recent store prices. They may have changed.</p>
     </section>
   );
 }

@@ -6,6 +6,7 @@ so the previous good report stays in place.
 """
 import logging
 import re
+import time
 from collections import defaultdict
 from datetime import timedelta
 
@@ -13,6 +14,7 @@ import httpx
 from pymongo.database import Database
 
 from . import community, ingestion
+from . import search as meaning
 from . import comparison as cmp
 from .db import client, new_id, supports_transactions, utcnow
 from .sources import da_dpi, dti_srp, open_data
@@ -34,6 +36,9 @@ SOURCES = {  # In display order: fresh food and staples first.
 BACKFILL_REPORTS = 14
 TREND_POINTS = 14
 RETAIN_DAYS = 90
+ROWS_CACHE_SECONDS = 60
+_rows_cache: dict = {}
+_image_cache: dict = {}
 
 
 def _slug(*parts: str) -> str:
@@ -163,6 +168,20 @@ def _row(doc: dict, history: list[dict]) -> dict:
     }
 
 
+def cached_rows(db: Database, island: str | None) -> list[dict]:
+    """Search-as-you-type asks on every keystroke, so official prices are held briefly."""
+    stamp, rows = _rows_cache.get(island, (0, []))
+    if time.monotonic() - stamp > ROWS_CACHE_SECONDS or not rows:
+        rows = price_rows(db, None, island)
+        _rows_cache[island] = (time.monotonic(), rows)
+    return rows
+
+
+def reset_caches() -> None:
+    _rows_cache.clear()
+    _image_cache.clear()
+
+
 def price_rows(db: Database, source: str | None = None, island: str | None = None) -> list[dict]:
     rows = []
     for name in ([source] if source else list(SOURCES)):
@@ -184,9 +203,67 @@ def _text(row: dict) -> str:
     return " ".join([row["commodity"], row["specification"], row["category"], row["group"] or ""]).lower()
 
 
-def search(rows: list[dict], query: str) -> list[dict]:
-    tokens = cmp.tokenize(query)
-    return [r for r in rows if cmp.matches(tokens, _text(r))] if tokens else rows
+def search_rows(db: Database, rows: list[dict], query: str) -> list[dict]:
+    groups = meaning.expand(db, query)
+    if not groups:
+        return rows
+    found = [r for r in rows if meaning.fits(groups, _text(r))]
+    return sorted(found, key=lambda r: -meaning.score(groups, r["commodity"]))
+
+
+def aisles(db: Database, limit: int = 10) -> list[dict]:
+    """The biggest product groups right now, so browsing follows the data."""
+    counts: dict[str, int] = defaultdict(int)
+    for doc in db.catalog_items.find({"status": "active"}, {"category": 1}).limit(20000):
+        counts[doc["category"]] += 1
+    for row in price_rows(db):
+        counts[row["category"]] += 1
+    ranked = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+    return [{"name": name, "count": count} for name, count in ranked[:limit]]
+
+
+def suggestions(db: Database, query: str, island: str | None, city: str | None, limit: int) -> list[dict]:
+    """What the search bar shows as the shopper types: product, picture and best price."""
+    groups = meaning.expand(db, query)
+    if not groups:
+        return []
+    rows = cached_rows(db, island)
+    hits = [r for r in rows if meaning.fits(groups, _text(r))]
+    hits.sort(key=lambda r: (-meaning.score(groups, r["commodity"]), r["price"]))
+    reports = community.current(db, city)
+    products = list(db.catalog_items.find(meaning.catalog_criteria(groups)).limit(120))
+    products.sort(key=lambda p: (-meaning.score(groups, p["name"]), not p.get("image_url"), p["name"]))
+
+    results = [{
+        "id": r["id"], "kind": "official", "name": r["commodity"], "size": r["specification"], "category": r["category"],
+        "image_url": image_for(db, r["commodity"]), "price": r["price"], "unit": r["unit"],
+        "price_label": r["source_label"], "price_id": r["id"],
+    } for r in hits[:limit // 2 + 1]]
+    for product in products[:limit - len(results)]:
+        name = f'{product["name"]} {product["size"]}'.strip()
+        seen = community.lowest_by_query(reports, name)
+        guess = None if seen else meaning.estimate(rows, name, product["name"])
+        results.append({
+            "id": product["_id"], "kind": "product", "name": product["name"], "size": product["size"],
+            "category": product["category"], "image_url": product.get("image_url"), "unit": None, "price_id": None,
+            "price": cmp.money(seen["price_centavos"]) if seen else guess["price"] if guess else None,
+            "price_label": f'{seen["store_name"]}' if seen else "Estimate from similar items" if guess else None,
+        })
+    return results
+
+
+def image_for(db: Database, name: str) -> str | None:
+    """A picture for an official item, borrowed from a matching catalog product."""
+    if name in _image_cache:
+        return _image_cache[name]
+    groups = [[t] for t in cmp.tokenize(name) if len(t) >= 3][:3]
+    if not groups:
+        return None
+    criteria = meaning.catalog_criteria(groups)
+    criteria["$and"].append({"image_url": {"$nin": [None, ""]}})
+    found = db.catalog_items.find_one(criteria)
+    _image_cache[name] = found["image_url"] if found else None
+    return _image_cache[name]
 
 
 def summary(db: Database) -> dict:
@@ -217,18 +294,19 @@ def _rank(row: dict, tokens: list[str]) -> tuple:
     return (not all(t in name for t in tokens), row["kind"] != "srp" and len(name) > 30, len(name), row["price"])
 
 
-def basket(rows: list[dict], items: list[dict], find_products=lambda query: [], reports: list[dict] | None = None) -> dict:
+def basket(db: Database, rows: list[dict], items: list[dict], find_products, reports: list[dict], elsewhere: list[dict]) -> dict:
     """Cost a list. Official prices first, then the shopper's own shelf prices.
 
-    A product in the brand catalog has no official price, so it stays out of the total
-    until a shopper reports one or the shopper enters their own. Prices are never guessed.
+    Prices fill in by themselves from the best evidence available: an official price, a
+    store price nearby, a store price elsewhere, then an estimate from similar official
+    items. Each is labelled. An item with no evidence at all stays out of the total.
     """
     by_id = {r["id"]: r for r in rows}
     lines, total = [], 0
     for item in items:
         query = item["query"]
         custom = item.get("custom_price")
-        matched = sorted(search(rows, query), key=lambda r: _rank(r, cmp.tokenize(query)))
+        matched = sorted(search_rows(db, rows, query), key=lambda r: _rank(r, cmp.tokenize(query)))
         chosen = by_id.get(item.get("price_id")) or (matched[0] if matched else None)
         brand = find_products(query) if custom is None and not chosen else []
         status = "no_match"
@@ -239,9 +317,16 @@ def basket(rows: list[dict], items: list[dict], find_products=lambda query: [], 
             status, unit_centavos, chosen = "custom", round(custom * 100), None
         elif chosen:
             status, unit_centavos, label = "matched", round(chosen["price"] * 100), chosen["commodity"]
-        elif (seen := community.lowest_by_query(reports or [], query)):
+        elif (seen := community.lowest_by_query(reports, query)):
             status, unit_centavos, label = "reported", seen["price_centavos"], seen["item_name"]
             report = community.report_json(seen)
+        elif (seen := community.lowest_by_query(elsewhere, query)):
+            status, unit_centavos, label = "reported", seen["price_centavos"], seen["item_name"]
+            report = {**community.report_json(seen), "elsewhere": True}
+        elif (guess := meaning.estimate(rows, query, brand[0]["name"] if brand else "")):
+            status, unit_centavos = "estimated", round(guess["price"] * 100)
+            label = f'{brand[0]["name"]} {brand[0]["size"]}'.strip() if brand else query
+            report = {"origin": f'Typical official price of {guess["count"]} similar {guess["kind"]} items', "price": guess["price"]}
         elif brand:
             status, label = "needs_price", f'{brand[0]["name"]} {brand[0]["size"]}'.strip()
         line_total = unit_centavos * item["quantity"]
@@ -255,10 +340,11 @@ def basket(rows: list[dict], items: list[dict], find_products=lambda query: [], 
                 for r in matched[:12]
             ],
         })
-    counted = [l for l in lines if l["status"] in ("matched", "custom", "reported")]
+    counted = [l for l in lines if l["status"] in ("matched", "custom", "reported", "estimated")]
     return {
         "lines": lines, "total": cmp.money(total), "currency": "PHP",
         "items_matched": len(counted),
+        "items_estimated": sum(l["status"] == "estimated" for l in lines),
         "items_need_price": sum(l["status"] == "needs_price" for l in lines),
         "items_unmatched": sum(l["status"] == "no_match" for l in lines),
         "generated_at": cmp.iso(utcnow()),

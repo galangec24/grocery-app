@@ -1,16 +1,14 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { api, CatalogItem, MarketSummary, PriceRow, query } from "../api";
+import { api, CatalogItem, MarketSummary, PriceRow, query, Suggestion } from "../api";
 import { addItems, newDraft, readDrafts, saveDraft } from "../drafts";
 import { longDate, mapUrl, peso } from "../format";
+import { Icon, IconButton } from "../icons";
 import { useLocation } from "../location";
+import { ProductImage, SearchBox } from "../SearchBox";
 import { ModalSubject, PriceModal } from "./PriceModal";
 
 type SortKey = "commodity" | "price" | "change_pct";
 const PAGE_SIZE = 25;
-const AISLES: [string, string][] = [
-  ["Snacks", "snack"], ["Drinks", "beverage"], ["Pantry", "condiment"], ["Dairy & Eggs", "dairy"], ["Frozen", "frozen"],
-  ["Bread & Breakfast", "bread"], ["Household", "household"], ["Baby & Mom", "baby"], ["Pet", "pet"],
-];
 
 export function Sparkline({ values }: { values: number[] }) {
   if (values.length < 2) return <span className="muted">No history yet</span>;
@@ -67,14 +65,14 @@ function CityPanel() {
           </p>
         </div>
         <div className="city-actions">
-          <button className={`btn${city ? "" : " primary"}`} onClick={locate} disabled={busy}>{busy ? "Finding your city…" : city ? "Refresh location" : "Use my location"}</button>
-          {city && <button className="btn" onClick={clear}>Clear</button>}
+          <IconButton icon={city ? "refresh" : "pin"} label={busy ? "Finding your city" : city ? "Refresh location" : "Use my location"} className="primary" onClick={locate} disabled={busy} />
+          {city && <IconButton icon="close" label="Clear location" onClick={clear} />}
         </div>
       </div>
       {!city && (
         <form className="city-form" onSubmit={submit}>
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Or type a city, like Davao City" aria-label="City name" />
-          <button className="btn" disabled={busy || !name.trim()}>Find</button>
+          <button className="icon-btn" aria-label="Find city" title="Find city" disabled={busy || !name.trim()}><Icon name="search" /></button>
         </form>
       )}
       {error && <p className="error" role="alert">{error}</p>}
@@ -114,6 +112,8 @@ export function PriceBoard({ compact }: { compact?: boolean }) {
   const [page, setPage] = useState(1);
   const [subject, setSubject] = useState<ModalSubject | null>(null);
   const [catalog, setCatalog] = useState<CatalogItem[]>([]);
+  const [matches, setMatches] = useState<Set<string> | null>(null);
+  const [aisles, setAisles] = useState<{ name: string; count: number }[]>([]);
   const island = city?.island;
 
   useEffect(() => {
@@ -127,16 +127,23 @@ export function PriceBoard({ compact }: { compact?: boolean }) {
   }, [island]);
 
   useEffect(() => {
+    api<{ name: string; count: number }[]>("/market/aisles").then(setAisles).catch(() => setAisles([]));
+  }, []);
+
+  useEffect(() => {
     const words = term.trim();
-    if (!words) { setCatalog([]); return; }
+    if (!words) { setCatalog([]); setMatches(null); return; }
     let live = true;
     const timer = setTimeout(() => {
       api<CatalogItem[]>(`/market/catalog${query({ q: words, limit: 24 })}`)
         .then((found) => { if (live) setCatalog(found); })
         .catch(() => { if (live) setCatalog([]); });
+      api<{ results: PriceRow[] }>(`/market/prices${query({ q: words, island })}`)
+        .then((found) => { if (live) setMatches(new Set(found.results.map((r) => r.id))); })
+        .catch(() => { if (live) setMatches(null); });
     }, 250);
     return () => { live = false; clearTimeout(timer); };
-  }, [term]);
+  }, [term, island]);
 
   const categories = useMemo(
     () => [...new Set((rows ?? []).filter((r) => !source || r.source === source).map((r) => r.category))].sort(),
@@ -144,12 +151,8 @@ export function PriceBoard({ compact }: { compact?: boolean }) {
   );
 
   const shown = useMemo(() => {
-    const words = term.toLowerCase().split(/\s+/).filter(Boolean);
-    const list = (rows ?? []).filter((r) => {
-      const text = `${r.commodity} ${r.specification} ${r.category} ${r.group}`.toLowerCase();
-      return (!source || r.source === source) && (!category || r.category === category)
-        && words.every((w) => text.includes(w) || (w.endsWith("s") && text.includes(w.slice(0, -1))));
-    });
+    const list = (rows ?? []).filter((r) =>
+      (!source || r.source === source) && (!category || r.category === category) && (!matches || matches.has(r.id)));
     if (!sort) return list; // Food first, as the server orders it.
     const direction = sort.up ? 1 : -1;
     return [...list].sort((a, b) => {
@@ -157,7 +160,7 @@ export function PriceBoard({ compact }: { compact?: boolean }) {
       if (sort.key === "price") return direction * (a.price - b.price);
       return direction * ((a.change_pct ?? 0) - (b.change_pct ?? 0));
     });
-  }, [rows, term, source, category, sort]);
+  }, [rows, matches, source, category, sort]);
 
   const brands = catalog;
 
@@ -174,6 +177,16 @@ export function PriceBoard({ compact }: { compact?: boolean }) {
     const label = [row.commodity, row.specification].filter(Boolean).join(", ");
     saveDraft(addItems(base, [{ query: label, quantity: 1, priceId: row.id, label }]));
     setAdded(row.id);
+  }
+
+  function pickSuggestion(item: Suggestion) {
+    const row = rows?.find((r) => r.id === item.id);
+    if (row) { setSubject({ kind: "price", row }); return; }
+    const found = catalog.find((c) => c.id === item.id);
+    setSubject({ kind: "brand", item: found ?? {
+      id: item.id, name: item.name, brand: "", category: item.category, size: item.size, variant: "",
+      barcode: null, image_url: item.image_url, source: "", keywords: "",
+    } });
   }
 
   function addBrand(item: CatalogItem) {
@@ -200,7 +213,7 @@ export function PriceBoard({ compact }: { compact?: boolean }) {
 
       <section className="panel table-panel">
         <div className="controls">
-          <input type="search" value={term} onChange={(e) => setTerm(e.target.value)} placeholder="Search rice, Piatos, dog food, perfume, rice cooker…" aria-label="Search prices" />
+          <SearchBox value={term} onChange={setTerm} onPick={pickSuggestion} label="Search prices" placeholder="Try bigas, itlog, Piatos, dog food…" />
           <select value={source} aria-label="Price type" onChange={(e) => { setSource(e.target.value); setCategory(""); }}>
             <option value="">All prices</option>
             <option value="dti_srp">Standard price (DTI SRP)</option>
@@ -212,8 +225,8 @@ export function PriceBoard({ compact }: { compact?: boolean }) {
           </select>
         </div>
         <div className="aisles" role="group" aria-label="Browse by aisle">
-          {AISLES.map(([label, word]) => (
-            <button key={label} className={`chip${term === word ? " on" : ""}`} aria-pressed={term === word} onClick={() => setTerm(term === word ? "" : word)}>{label}</button>
+          {aisles.map(({ name }) => (
+            <button key={name} className={`chip${term === name ? " on" : ""}`} aria-pressed={term === name} onClick={() => setTerm(term === name ? "" : name)}>{name}</button>
           ))}
         </div>
         {error && <p className="error" role="alert">{error}</p>}
@@ -229,10 +242,10 @@ export function PriceBoard({ compact }: { compact?: boolean }) {
                 <article className="brand-card clickable" key={item.id} tabIndex={0}
                   onClick={() => setSubject({ kind: "brand", item })}
                   onKeyDown={(e) => { if (e.key === "Enter") setSubject({ kind: "brand", item }); }}>
-                  {item.image_url && <img className="brand-photo" src={item.image_url} alt="" loading="lazy" />}
+                  <ProductImage src={item.image_url} category={`${item.category} ${item.name}`} large />
                   <strong>{item.name}</strong>
                   <small>{item.variant && <b className="size-tag">{item.variant}</b>} {item.size} · {item.category}</small>
-                  <button className="mini" onClick={(e) => { e.stopPropagation(); addBrand(item); }} disabled={added === item.id}>{added === item.id ? "Added" : "Add to draft"}</button>
+                  <IconButton icon={added === item.id ? "check" : "plus"} label={added === item.id ? "Added" : "Add to draft"} onClick={(e) => { e.stopPropagation(); addBrand(item); }} disabled={added === item.id} />
                 </article>
               ))}
             </div>
@@ -259,14 +272,14 @@ export function PriceBoard({ compact }: { compact?: boolean }) {
                     <tr key={row.id} className="clickable" tabIndex={0} aria-label={`${row.commodity}, ${peso(row.price)}. Open details`}
                       onClick={() => setSubject({ kind: "price", row })}
                       onKeyDown={(e) => { if (e.key === "Enter") setSubject({ kind: "price", row }); }}>
-                      <td data-label="Item"><strong>{row.commodity}</strong>{row.specification && <small>{row.specification}</small>}</td>
+                      <td data-label="Item"><span className="item-cell"><ProductImage category={`${row.category} ${row.commodity}`} /><span><strong>{row.commodity}</strong>{row.specification && <small>{row.specification}</small>}</span></span></td>
                       <td data-label="Category">{row.category}</td>
                       <td data-label="Price" className="num"><span className="price">{peso(row.price)}</span><small>per {row.unit}</small></td>
                       <td data-label="Change"><Change row={row} /></td>
                       <td data-label="Trend" className="trend-cell">{row.kind === "srp" ? <span className="muted">Fixed by bulletin</span> : <Sparkline values={row.trend} />}</td>
                       <td data-label="Applies to">{row.region}</td>
                       <td className="row-add">
-                        <button className="mini" onClick={(e) => { e.stopPropagation(); addToDraft(row); }} disabled={added === row.id}>{added === row.id ? "Added" : "Add to draft"}</button>
+                        <IconButton icon={added === row.id ? "check" : "plus"} label={added === row.id ? "Added" : "Add to draft"} onClick={(e) => { e.stopPropagation(); addToDraft(row); }} disabled={added === row.id} />
                       </td>
                     </tr>
                   ))}

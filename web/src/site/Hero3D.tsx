@@ -2,8 +2,6 @@ import { PointerEvent, RefObject, useEffect, useRef, useState } from "react";
 import { api, PriceRow } from "../api";
 import { peso } from "../format";
 
-const ITEMS = ["Premium Rice, Local", "Tilapia", "Saba Philippines Sardines", "Chicken Egg (White, Medium)"];
-
 export function useTilt() {
   const scene = useRef<HTMLDivElement>(null);
   function tilt(event: PointerEvent<HTMLElement>) {
@@ -21,8 +19,13 @@ export function Hero3D({ scene, count = 4 }: { scene: RefObject<HTMLDivElement |
   const [rows, setRows] = useState<PriceRow[]>([]);
 
   useEffect(() => {
+    // Today's biggest movers, topped up with official standard prices.
     api<{ results: PriceRow[] }>("/market/prices")
-      .then((r) => setRows(ITEMS.slice(0, count).flatMap((name) => r.results.find((row) => row.commodity === name) ?? [])))
+      .then((r) => {
+        const moved = r.results.filter((row) => row.change).sort((a, b) => Math.abs(b.change_pct ?? 0) - Math.abs(a.change_pct ?? 0));
+        const standard = r.results.filter((row) => row.kind === "srp");
+        setRows([...moved.slice(0, count - 1), ...standard].slice(0, count));
+      })
       .catch(() => setRows([]));
   }, [count]);
 

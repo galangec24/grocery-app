@@ -9,6 +9,7 @@ import '../drafts.dart';
 import '../purchases.dart';
 import '../receipt.dart';
 import '../state.dart';
+import '../widgets.dart';
 
 /// Shared by My list and Drafts. The receipt follows the list, with no button to press.
 class ListEditor extends StatefulWidget {
@@ -25,6 +26,8 @@ class ListEditor extends StatefulWidget {
 class _ListEditorState extends State<ListEditor> {
   final _input = TextEditingController();
   Timer? _debounce;
+  Timer? _searchTimer;
+  List<Suggestion> _suggestions = const [];
   Basket? _basket;
   String? _error;
 
@@ -39,6 +42,7 @@ class _ListEditorState extends State<ListEditor> {
   @override
   void dispose() {
     _debounce?.cancel();
+    _searchTimer?.cancel();
     _input.dispose();
     super.dispose();
   }
@@ -59,6 +63,31 @@ class _ListEditorState extends State<ListEditor> {
     if (items.isEmpty) return;
     items.forEach(_draft.add);
     _input.clear();
+    _suggestions = const [];
+    _changed();
+  }
+
+  void _search(String text) {
+    _searchTimer?.cancel();
+    if (text.trim().isEmpty) {
+      setState(() => _suggestions = const []);
+      return;
+    }
+    _searchTimer = Timer(const Duration(milliseconds: 250), () async {
+      final state = AppScope.of(context);
+      try {
+        final found = await state.api.suggest(text.trim(), island: state.city?.island, city: state.city?.city);
+        if (mounted && _input.text == text) setState(() => _suggestions = found);
+      } on ApiException {
+        if (mounted) setState(() => _suggestions = const []);
+      }
+    });
+  }
+
+  void _pickSuggestion(Suggestion item) {
+    _draft.add(DraftItem(query: item.label, priceId: item.priceId, label: item.label));
+    _input.clear();
+    _suggestions = const [];
     _changed();
   }
 
@@ -200,8 +229,9 @@ class _ListEditorState extends State<ListEditor> {
         controller: _input,
         minLines: 1,
         maxLines: 4,
+        onChanged: _search,
         decoration: InputDecoration(
-          hintText: 'piatos, 2 x tilapia, mega sardines',
+          hintText: 'Search itlog, Piatos, or type a list',
           border: const OutlineInputBorder(),
           suffixIcon: IconButton(
             tooltip: 'Add',
@@ -210,6 +240,7 @@ class _ListEditorState extends State<ListEditor> {
           ),
         ),
       ),
+      for (final item in _suggestions) SuggestionTile(item: item, onTap: () => _pickSuggestion(item)),
       const SizedBox(height: 6),
       for (final item in _draft.items) _ItemRow(item: item, line: _lineFor(item), onChanged: _changed, onPick: _pick, onRemove: () {
         _draft.items.remove(item);
@@ -271,11 +302,13 @@ class _ItemRow extends StatelessWidget {
     final current = line;
     final askPrice = item.customPrice != null ||
         current?.status == 'reported' ||
+        current?.status == 'estimated' ||
         current?.status == 'needs_price' ||
         current?.status == 'no_match';
     final note = switch (current?.status) {
       'matched' => '${peso(current!.unitPrice)} per ${current.selected!.unit}',
       'reported' => 'Reported at ${current!.reportedStore}',
+      'estimated' => '≈ ${peso(current!.unitPrice)}, estimated from similar official items',
       'needs_price' => 'No price yet. Be the first to enter it.',
       'no_match' => 'Not in our lists. Enter a price to count it.',
       'custom' => 'Your shelf price',

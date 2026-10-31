@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useBudget } from "../budget";
 import { peso } from "../format";
+import { IconButton } from "../icons";
 import { deletePurchase, inRange, monthOf, monthsBetween, previousRange, Purchase, readPurchases, shiftMonth, sumTotal, topItems, toCsv } from "../purchases";
 
 const thisMonth = () => new Date().toISOString().slice(0, 7);
@@ -59,8 +60,8 @@ export function Reports() {
         <div className="range">
           <label>From<input type="month" value={from} onChange={(e) => e.target.value && setFrom(e.target.value)} /></label>
           <label>To<input type="month" value={to} onChange={(e) => e.target.value && setTo(e.target.value)} /></label>
-          <button className="btn" onClick={exportCsv} disabled={shown.length === 0}>Export CSV</button>
-          <button className="btn" onClick={() => window.print()} disabled={shown.length === 0}>Print</button>
+          <IconButton icon="upload" label="Export CSV" onClick={exportCsv} disabled={shown.length === 0} />
+          <IconButton icon="print" label="Print report" onClick={() => window.print()} disabled={shown.length === 0} />
         </div>
       </section>
 
@@ -115,9 +116,9 @@ export function Reports() {
                     <span><b>{p.name}</b><small>{new Date(`${p.date}T00:00:00`).toLocaleDateString("en-PH", { dateStyle: "medium" })} · {p.lines.length} items</small></span>
                     <span className="price">{peso(p.total)}</span>
                     {confirming === p.id ? (
-                      <button className="mini danger" onClick={() => { deletePurchase(p.id); setPurchases(readPurchases()); setConfirming(null); }}>Delete</button>
+                      <IconButton icon="check" label="Confirm delete" className="danger" onClick={() => { deletePurchase(p.id); setPurchases(readPurchases()); setConfirming(null); }} />
                     ) : (
-                      <button className="mini" aria-label={`Delete ${p.name}`} onClick={() => setConfirming(p.id)}>✕</button>
+                      <IconButton icon="trash" label={`Delete ${p.name}`} onClick={() => setConfirming(p.id)} />
                     )}
                   </li>
                 ))}

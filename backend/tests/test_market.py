@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from app import market
+from app import market, search
 from app.bootstrap import ensure_admin, purge_sample_data
 from app.db import utcnow
 from app.sources import da_dpi, dti_srp, open_data
@@ -131,10 +131,14 @@ def test_failed_report_keeps_previous_prices(client, db, srp):
     assert db.market_reports.find_one({"_id": "https://dti.example/new.pdf"})["status"] == "failed"
 
 
-def search(client, **params):
+def search_prices(client, **params):
     response = client.get("/api/v1/market/prices", params=params)
     assert response.status_code == 200, response.text
     return response.json()["results"]
+
+
+def search_api(client, query):
+    return search_prices(client, q=query)
 
 
 @pytest.mark.parametrize("query,expected", [
@@ -149,24 +153,24 @@ def search(client, **params):
     ("BEAR BRAND", "Bear Brand"),
 ])
 def test_live_search_cases(loaded, client, query, expected):
-    rows = search(client, q=query)
+    rows = search_prices(client, q=query)
     assert rows, query
     if expected:
         assert expected in {r["commodity"] for r in rows}
 
 
 def test_search_nothing_returns_empty_not_error(loaded, client):
-    assert search(client, q="unicorn steak") == []
+    assert search_prices(client, q="unicorn steak") == []
 
 
 def test_every_row_cites_source_and_date(loaded, client):
-    for row in search(client):
+    for row in search_prices(client):
         assert row["source_url"] and row["report_date"] and row["price"] > 0 and row["region"]
 
 
 def test_source_and_category_filters(loaded, client):
-    assert {r["source"] for r in search(client, source="dti_srp")} == {"dti_srp"}
-    assert {r["category"] for r in search(client, category="Corned Beef")} == {"Corned Beef"}
+    assert {r["source"] for r in search_prices(client, source="dti_srp")} == {"dti_srp"}
+    assert {r["category"] for r in search_prices(client, category="Corned Beef")} == {"Corned Beef"}
 
 
 def test_day_on_day_change_uses_consecutive_reports(loaded, client, db, dpi):
@@ -174,17 +178,17 @@ def test_day_on_day_change_uses_consecutive_reports(loaded, client, db, dpi):
         {**r, "price_centavos": r["price_centavos"] - 100 if r["price_centavos"] else None} for r in dpi["rows"]
     ]}
     market.store_report(db, "da_dpi", "https://da.example/2026-10-29.pdf", earlier)
-    row = search(client, q="tilapia")[0]
+    row = search_prices(client, q="tilapia")[0]
     assert row["report_date"] == "2026-10-30" and row["change"] == 1.0 and len(row["trend"]) == 2
     assert market.summary(db)["rising"] > 100
 
 
 def test_regional_srp_items_follow_the_located_island(loaded, client):
-    luzon = {r["commodity"] for r in search(client, q="fidel", island="Luzon")}
-    visayas = {r["commodity"] for r in search(client, q="fidel", island="Visayas")}
+    luzon = {r["commodity"] for r in search_prices(client, q="fidel", island="Luzon")}
+    visayas = {r["commodity"] for r in search_prices(client, q="fidel", island="Visayas")}
     assert all("Visayas" not in c and "Mindanao" not in c for c in luzon)
     assert all("Luzon" not in c for c in visayas) and luzon and visayas
-    assert search(client, q="sardines", island="Mindanao"), "nationwide SRPs apply everywhere"
+    assert search_prices(client, q="sardines", island="Mindanao"), "nationwide SRPs apply everywhere"
 
 
 def test_basket_totals_exact_official_prices(loaded, client):
@@ -278,10 +282,10 @@ def test_reported_price_replaces_no_price(client):
     assert line["report"]["store_name"] == "SM Hypermarket"
 
 
-def test_reports_stay_in_their_city(client):
+def test_reports_elsewhere_never_name_a_cheapest_store_here(client):
     shelf(client)
-    body = {"items": [{"query": "Cheezy Corn Crunch 70g"}], "city": "Davao City"}
-    assert client.post("/api/v1/market/basket", json=body).json()["lines"][0]["status"] == "needs_price"
+    body = {"items": ["Cheezy Corn Crunch 70g"], "city": "Davao City"}
+    assert client.post("/api/v1/market/best-stores", json=body).json()["best"] is None
 
 
 def test_official_price_wins_over_a_report(loaded, client):
@@ -435,3 +439,72 @@ def test_only_standard_located_prices_are_kept(change):
 
 def test_regex_characters_in_search_are_harmless(client):
     assert client.get("/api/v1/market/catalog", params={"q": "(.*)+["}).status_code == 200
+
+
+def suggest(client, q, **params):
+    response = client.get("/api/v1/market/suggest", params={"q": q, **params})
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+@pytest.mark.parametrize("query,word", [
+    ("itlog", "egg"), ("bigas", "rice"), ("mantika", "oil"), ("gatas", "milk"), ("sibuyas", "onion"), ("bawang", "garlic"),
+    ("sardnes", "sardines"), ("tilapya", "tilapia"), ("cheezy", "cheezy"), ("aso", "dog"), ("chichirya", "chips"),
+])
+def test_search_understands_tagalog_and_typos(loaded, client, query, word):
+    names = " ".join(f'{r["name"]} {r["category"]}' for r in suggest(client, query)).lower()
+    assert word in names, names[:200]
+
+
+def test_suggestions_carry_price_and_label(loaded, client):
+    first = suggest(client, "bear brand")[0]
+    assert first["name"] == "Bear Brand" and first["price"] == 50 and first["price_label"] == "DTI Suggested Retail Price"
+
+
+def test_suggestion_shows_a_store_price(client):
+    shelf(client, name="Jack 'n Jill Piatos Cheese 85g", price=41)
+    hit = next(r for r in suggest(client, "piatos cheese") if r["size"] == "85g")
+    assert hit["price"] == 41 and hit["price_label"] == "SM Hypermarket"
+
+
+def test_official_item_borrows_a_catalog_photo(loaded, client, db):
+    open_data.sync_product_page(db, Http(Page({"products": [{**FOOD, "code": "9", "product_name": "Bear Brand", "brands": "Bear Brand"}]})), "food")
+    search.reset_vocabulary()
+    market.reset_caches()
+    assert suggest(client, "bear brand")[0]["image_url"] == "https://img/x.jpg"
+
+
+def test_price_fills_in_from_similar_official_items(loaded, client):
+    line = client.post("/api/v1/market/basket", json={"items": [{"query": "mega sardines 155g"}]}).json()["lines"][0]
+    assert line["status"] == "estimated" and line["unit_price"] > 0 and "similar" in line["report"]["origin"]
+    assert client.post("/api/v1/market/basket", json={"items": [{"query": "mega sardines 155g"}]}).json()["total"] == line["unit_price"]
+
+
+def test_no_estimate_without_comparable_official_items(loaded, client):
+    line = client.post("/api/v1/market/basket", json={"items": [{"query": "piatos cheese"}]}).json()["lines"][0]
+    assert line["status"] == "needs_price" and line["line_total"] == 0
+
+
+def test_price_from_another_city_is_used_and_labelled(client):
+    shelf(client, name="Piatos Cheese 85g", price=40)
+    body = {"items": [{"query": "piatos cheese 85g"}], "city": "Davao City"}
+    line = client.post("/api/v1/market/basket", json=body).json()["lines"][0]
+    assert line["status"] == "reported" and line["report"]["elsewhere"] is True and line["report"]["city"] == "Cebu City"
+
+
+def test_aisles_follow_the_data(loaded, client):
+    names = [a["name"] for a in client.get("/api/v1/market/aisles").json()]
+    assert len(names) == 10 and "Beverages" in names
+
+
+def test_price_board_search_understands_tagalog(loaded, client):
+    assert any("egg" in r["commodity"].lower() for r in search_api(client, "itlog"))
+
+
+def test_whole_words_rank_first(loaded, client):
+    assert "egg" in suggest(client, "itlog")[0]["name"].lower().split("(")[0].split()[1:] or "Chicken Egg" in suggest(client, "itlog")[0]["name"]
+
+
+def test_basket_names_the_product_that_was_asked_for(loaded, client):
+    line = client.post("/api/v1/market/basket", json={"items": [{"query": "mega sardines 155g"}]}).json()["lines"][0]
+    assert "Mega Sardines" in line["label"] and "Mackerel" not in line["label"]

@@ -71,13 +71,11 @@ class _BestStoreCardState extends State<BestStoreCard> {
         ],
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Text('Cheapest store for your list', style: TextStyle(color: Color(0xFFFFC65C), fontWeight: FontWeight.w700)),
+        Text(best == null ? 'Your closest store' : 'Cheapest store for your list',
+            style: const TextStyle(color: Color(0xFFFFC65C), fontWeight: FontWeight.w700)),
         const SizedBox(height: 4),
         if (best == null)
-          const Text(
-            'No shopper has reported these prices near you yet. Share what you see, and the cheapest store will appear here.',
-            style: TextStyle(color: Color(0xFFD3E8D9)),
-          )
+          _ClosestStore(city: state.city, me: state.latitude == null ? null : LatLng(state.latitude!, state.longitude!))
         else ...[
           Text(best.storeName, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700)),
           Text(peso(best.total), style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w800)),
@@ -104,6 +102,36 @@ class _BestStoreCardState extends State<BestStoreCard> {
         ],
       ]),
     );
+  }
+}
+
+class _ClosestStore extends StatelessWidget {
+  const _ClosestStore({required this.city, required this.me});
+
+  final CityInfo? city;
+  final LatLng? me;
+
+  @override
+  Widget build(BuildContext context) {
+    final store = city != null && city!.stores.isNotEmpty ? city!.stores.first : null;
+    if (store == null) {
+      return const Text('Turn on location to see the stores near you.', style: TextStyle(color: Color(0xFFD3E8D9)));
+    }
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(store.name, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700)),
+      Text('${store.type} · ${store.distanceKm.toStringAsFixed(1)} km away', style: const TextStyle(color: Color(0xFFD3E8D9))),
+      const SizedBox(height: 10),
+      ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: SizedBox(
+          height: 210,
+          child: _RouteMap(store: LatLng(store.latitude, store.longitude), me: me, path: const []),
+        ),
+      ),
+      const SizedBox(height: 6),
+      const Text('The cheapest store will appear here once store prices near you are known.',
+          style: TextStyle(color: Color(0xFFB8CFBF), fontSize: 12)),
+    ]);
   }
 }
 
