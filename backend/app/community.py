@@ -12,7 +12,7 @@ from statistics import median
 from pymongo.database import Database
 
 from . import comparison as cmp
-from . import ingestion
+from . import ingestion, live
 from .db import new_id, utcnow
 
 MAX_AGE_DAYS = 30
@@ -37,6 +37,8 @@ def add_report(db: Database, name: str, store_name: str, latitude: float, longit
         "status": "flagged" if flagged else "visible", "created_at": utcnow(),
     }
     db.shelf_reports.insert_one(doc)
+    if doc["status"] == "visible":
+        live.bump(db)
     return doc
 
 

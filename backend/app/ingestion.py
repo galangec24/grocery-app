@@ -13,6 +13,7 @@ from fastapi import HTTPException
 from pymongo.database import Database
 
 from . import comparison as cmp
+from . import live
 from .db import new_id, utcnow
 
 KINDS = {"retailer_api", "retailer_feed", "retailer_website", "comparison_site", "open_data", "government", "community"}
@@ -58,6 +59,7 @@ def source_json(db: Database, source: dict) -> dict:
         "can_run": source["enabled"] and source["permission"] in USABLE,
         "prices": db.retail_prices.count_documents({"source_id": source["_id"]}),
         "last_import_at": cmp.iso(source.get("last_import_at")),
+        "connector_url": (source.get("connector") or {}).get("url"),
     }
 
 
@@ -69,6 +71,18 @@ def create_source(db: Database, name: str, kind: str, terms_url: str, notes: str
         "terms_url": terms_url, "notes": notes, "last_import_at": None, "created_at": utcnow(),
     }
     db.price_sources.insert_one(source)
+    return source
+
+
+def set_connector(db: Database, source_id: str, url: str, items_key: str) -> dict:
+    source = db.price_sources.find_one({"_id": source_id})
+    if source is None:
+        raise HTTPException(404, "Source not found")
+    if not url.startswith("https://"):
+        raise HTTPException(422, "Connector address must start with https://")
+    connector = {"url": url, "items_key": items_key}
+    db.price_sources.update_one({"_id": source_id}, {"$set": {"connector": connector}})
+    source["connector"] = connector
     return source
 
 
@@ -145,6 +159,13 @@ def import_feed(db: Database, source_id: str, content: bytes) -> dict:
     if missing:
         raise HTTPException(422, f"CSV is missing columns: {', '.join(sorted(missing))}")
 
+    return import_rows(db, source_id, rows)
+
+
+def import_rows(db: Database, source_id: str, rows: list[dict]) -> dict:
+    """Validates and stores prices from any feed or connector."""
+    if not can_run(db, source_id):
+        raise HTTPException(403, "This source doesn't have permission to supply prices yet")
     now = utcnow()
     imported, rejections = 0, []
     for number, row in enumerate(rows, start=2):  # Row 1 is the header.
@@ -156,6 +177,8 @@ def import_feed(db: Database, source_id: str, content: bytes) -> dict:
         db.retail_prices.update_one(key, {"$set": record, "$setOnInsert": {"_id": new_id()}}, upsert=True)
         imported += 1
     db.price_sources.update_one({"_id": source_id}, {"$set": {"last_import_at": now}})
+    if imported:
+        live.bump(db)
     return {"rows": len(rows), "imported": imported, "rejected": len(rejections), "rejections": rejections[:MAX_STORED_REJECTIONS]}
 
 

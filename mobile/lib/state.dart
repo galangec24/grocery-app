@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -21,6 +23,33 @@ class AppState extends ChangeNotifier {
   double? longitude;
   bool locating = false;
   String? locationError;
+
+  int liveVersion = 0;
+  Timer? _liveTimer;
+
+  /// Prices change on the server, so open screens check and reload by themselves.
+  void startLiveUpdates() {
+    _liveTimer?.cancel();
+    _liveTimer = Timer.periodic(const Duration(seconds: 30), (_) => checkForNewPrices());
+  }
+
+  Future<void> checkForNewPrices() async {
+    try {
+      final version = await api.liveVersion();
+      if (version != liveVersion) {
+        liveVersion = version;
+        notifyListeners();
+      }
+    } on ApiException {
+      return; // The next check will try again.
+    }
+  }
+
+  @override
+  void dispose() {
+    _liveTimer?.cancel();
+    super.dispose();
+  }
 
   double? budget;
   bool budgetLoaded = false;

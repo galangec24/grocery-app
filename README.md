@@ -39,13 +39,21 @@ Budolista is registered but blocked: its terms allow personal, non-commercial us
 
 Drafts, the budget and saved purchases stay on the device, so they need no account but don't move between devices.
 
+## Price Agent
+
+`backend/app/agent.py` checks every permitted source, saves the best supported price on each product, and tells open apps when prices change. It runs every 15 minutes while the server is awake and as soon as the server starts. An hourly GitHub workflow wakes the free Render service so it keeps running.
+
+Run it by hand with `python -m app.agent` (set `MONGODB_URI` first), or use **Run the agent now** on the dashboard. It prints how many products have a price and how many have no evidence yet. It never invents a price.
+
+To connect a retailer API: record permission under **Price data sources**, then add the https address. The API returns JSON using the same names as the CSV columns. A token goes in the Render variable `SOURCE_<ID>_TOKEN`, for example `SOURCE_WALTERMART_TOKEN`.
+
 ## Automation
 
 | Trigger | What happens |
 | --- | --- |
 | Push to `main` | Tests run on all parts, the Android and iOS apps compile, the website publishes to Firebase, and Render redeploys the backend |
 | Push a `v*.*.*` tag | The APK is built, signed and published as a GitHub Release |
-| Four times a day | Live checks run against production. This wakes the Render service, which collects any new reports |
+| Every hour | Live checks run against production, which wakes Render so the Price Agent runs |
 
 Reports are collected in batches: each run stores up to 14 new daily reports, and a report that fails validation is skipped so the last good prices stay live.
 

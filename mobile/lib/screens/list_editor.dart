@@ -29,6 +29,7 @@ class _ListEditorState extends State<ListEditor> {
   Timer? _searchTimer;
   List<Suggestion> _suggestions = const [];
   Basket? _basket;
+  int _liveVersion = -1;
   String? _error;
 
   Draft get _draft => widget.draft;
@@ -36,7 +37,11 @@ class _ListEditorState extends State<ListEditor> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _schedule();
+    final version = AppScope.of(context).liveVersion;
+    if (version != _liveVersion) {
+      _liveVersion = version;
+      _schedule();
+    }
   }
 
   @override

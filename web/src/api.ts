@@ -69,6 +69,7 @@ export interface CatalogItem {
   image_url: string | null;
   source: string;
   keywords: string;
+  auto_price: { price: number; kind: string; label: string } | null;
 }
 
 export interface BasketLine {
@@ -121,6 +122,12 @@ export interface Suggestion {
   unit: string | null;
   price_label: string | null;
   price_id: string | null;
+}
+
+export interface LiveState {
+  version: number;
+  updated_at: string | null;
+  checked_at: string | null;
 }
 
 export interface PricePoint {

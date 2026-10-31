@@ -3,6 +3,7 @@ import { api, CatalogItem, MarketSummary, PriceRow, query, Suggestion } from "..
 import { addItems, newDraft, readDrafts, saveDraft } from "../drafts";
 import { longDate, mapUrl, peso } from "../format";
 import { Icon, IconButton } from "../icons";
+import { LiveBadge, useLive } from "../live";
 import { useLocation } from "../location";
 import { ProductImage, SearchBox } from "../SearchBox";
 import { ModalSubject, PriceModal } from "./PriceModal";
@@ -115,16 +116,17 @@ export function PriceBoard({ compact }: { compact?: boolean }) {
   const [matches, setMatches] = useState<Set<string> | null>(null);
   const [aisles, setAisles] = useState<{ name: string; count: number }[]>([]);
   const island = city?.island;
+  const { version } = useLive();
 
   useEffect(() => {
     api<MarketSummary>("/market/summary").then(setSummary).catch((e) => setError(e.message));
-  }, []);
+  }, [version]);
 
   useEffect(() => {
     api<{ results: PriceRow[] }>(`/market/prices${query({ island })}`)
       .then((r) => { setRows(r.results); setError(null); })
       .catch((e) => setError(e.message));
-  }, [island]);
+  }, [island, version]);
 
   useEffect(() => {
     api<{ name: string; count: number }[]>("/market/aisles").then(setAisles).catch(() => setAisles([]));
@@ -185,7 +187,7 @@ export function PriceBoard({ compact }: { compact?: boolean }) {
     const found = catalog.find((c) => c.id === item.id);
     setSubject({ kind: "brand", item: found ?? {
       id: item.id, name: item.name, brand: "", category: item.category, size: item.size, variant: "",
-      barcode: null, image_url: item.image_url, source: "", keywords: "",
+      barcode: null, image_url: item.image_url, source: "", keywords: "", auto_price: null,
     } });
   }
 
@@ -245,6 +247,7 @@ export function PriceBoard({ compact }: { compact?: boolean }) {
                   <ProductImage src={item.image_url} category={`${item.category} ${item.name}`} large />
                   <strong>{item.name}</strong>
                   <small>{item.variant && <b className="size-tag">{item.variant}</b>} {item.size} · {item.category}</small>
+                  {item.auto_price && <b className="brand-price">{item.auto_price.kind === "estimate" ? "≈ " : ""}{peso(item.auto_price.price)}<small>{item.auto_price.label}</small></b>}
                   <IconButton icon={added === item.id ? "check" : "plus"} label={added === item.id ? "Added" : "Add to draft"} onClick={(e) => { e.stopPropagation(); addBrand(item); }} disabled={added === item.id} />
                 </article>
               ))}
@@ -253,7 +256,7 @@ export function PriceBoard({ compact }: { compact?: boolean }) {
         )}
         {shown.length > 0 && (
           <>
-            <p className="result-count">{shown.length} {shown.length === 1 ? "price" : "prices"}</p>
+            <p className="result-count">{shown.length} {shown.length === 1 ? "price" : "prices"} <LiveBadge /></p>
             <div className="table-wrap">
               <table className="prices">
                 <thead>

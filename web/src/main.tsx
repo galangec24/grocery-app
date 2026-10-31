@@ -1,4 +1,5 @@
 import { createRoot } from "react-dom/client";
+import { LiveProvider } from "./live";
 import { LocationProvider } from "./location";
 import { navigate, useRoute } from "./router";
 import { Shop } from "./shop/Shop";
@@ -10,10 +11,10 @@ function App() {
   const { pathname } = useRoute();
   if (pathname.startsWith("/dashboard")) return <Dashboard />;
   if (pathname.startsWith("/shop")) {
-    return <LocationProvider><Shop path={pathname} /></LocationProvider>;
+    return <LiveProvider><LocationProvider><Shop path={pathname} /></LocationProvider></LiveProvider>;
   }
   if (pathname !== "/") navigate("/");
-  return <LocationProvider><Landing /></LocationProvider>;
+  return <LiveProvider><LocationProvider><Landing /></LocationProvider></LiveProvider>;
 }
 
 createRoot(document.getElementById("root")!).render(<App />);

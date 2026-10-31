@@ -5,6 +5,7 @@ import { addItems, deleteDraft, Draft, DraftItem, duplicateDraft, MAX_ITEMS, new
 import { peso } from "../format";
 import { Icon, IconButton } from "../icons";
 import { savePurchase } from "../purchases";
+import { useLive } from "../live";
 import { useLocation } from "../location";
 import { navigate } from "../router";
 import { SearchBox } from "../SearchBox";
@@ -118,6 +119,7 @@ function ListEditor({ draft, onChange, header, footer }: {
 }) {
   const { city } = useLocation();
   const { budget, setSpent } = useBudget();
+  const { version } = useLive();
   const [text, setText] = useState("");
   const [purchaseDate, setPurchaseDate] = useState(() => new Date());
   const [storeIndex, setStoreIndex] = useState("");
@@ -159,7 +161,7 @@ function ListEditor({ draft, onChange, header, footer }: {
     }, 300);
     return () => { live = false; clearTimeout(timer); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [signature, city?.island]);
+  }, [signature, city?.island, version]);
 
   useEffect(() => () => setSpent(0), [setSpent]);
 

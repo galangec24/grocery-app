@@ -262,6 +262,11 @@ class Api {
     return CityInfo.fromJson(data as Map<String, dynamic>);
   }
 
+  Future<int> liveVersion() async {
+    final data = await _send(() => _client.get(_uri('/market/live')));
+    return data['version'] as int;
+  }
+
   Future<List<Suggestion>> suggest(String query, {String? island, String? city}) async {
     final data = await _send(() => _client.get(_uri('/market/suggest', {
           'q': query,

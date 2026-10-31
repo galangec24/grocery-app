@@ -6,7 +6,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPExcepti
 from pydantic import BaseModel, Field, field_validator
 from pymongo.database import Database
 
-from . import catalog, community, ingestion, market
+from . import agent, catalog, community, ingestion
 from .sources import open_data
 from . import comparison as cmp
 from .config import MAX_CSV_BYTES
@@ -339,13 +339,32 @@ def data_sources(user: dict = Depends(require_system_admin), db: Database = Depe
     return open_data.status(db)
 
 
-@router.post("/market/refresh", status_code=202)
-def refresh_market(
+@router.get("/agent")
+def agent_status(user: dict = Depends(require_system_admin), db: Database = Depends(get_db)):
+    return agent.status(db)
+
+
+@router.post("/agent/run", status_code=202)
+def run_agent(
     tasks: BackgroundTasks, user: dict = Depends(require_system_admin), db: Database = Depends(get_db),
 ):
-    tasks.add_task(market.ingest, db)
-    audit(db, user, "market.refresh_requested")
+    tasks.add_task(agent.run_cycle, db)
+    audit(db, user, "agent.run_requested")
     return {"started": True}
+
+
+class ConnectorUpdate(BaseModel):
+    url: str = Field(min_length=9, max_length=300)
+    items_key: str = Field("items", max_length=40)
+
+
+@router.put("/sources/{source_id}/connector")
+def set_connector(
+    source_id: str, body: ConnectorUpdate, user: dict = Depends(require_system_admin), db: Database = Depends(get_db),
+):
+    source = ingestion.set_connector(db, source_id, body.url, body.items_key)
+    audit(db, user, "source.connector_set", None, source["name"])
+    return ingestion.source_json(db, source)
 
 
 class OrganizationCreate(BaseModel):

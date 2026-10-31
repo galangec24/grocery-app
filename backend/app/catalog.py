@@ -191,6 +191,7 @@ def _public(doc: dict) -> dict:
         "id": doc["_id"], "name": doc["name"], "brand": doc["brand"], "category": doc["category"],
         "size": doc["size"], "variant": doc.get("variant", ""), "barcode": doc.get("barcode"),
         "image_url": doc.get("image_url"), "source": doc.get("source"), "keywords": doc["keywords"],
+        "auto_price": doc.get("auto_price"),
     }
 
 

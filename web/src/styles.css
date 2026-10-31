@@ -538,6 +538,16 @@ label.mini { cursor: pointer; }
 .brand-card .icon-btn { width: 36px; height: 36px; justify-self: end; }
 table.prices .icon-btn { width: 38px; height: 38px; }
 
+/* Live prices and the agent */
+.live-badge { display: inline-flex; align-items: center; gap: 6px; margin-left: 8px; padding: 1px 9px; border-radius: 99px; font-size: .75rem; color: #0a6d3a; background: var(--green-100); }
+.live-badge i { width: 8px; height: 8px; border-radius: 50%; background: #16a34a; animation: pulse 2s ease-out infinite; }
+@keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(22, 163, 74, .55); } 100% { box-shadow: 0 0 0 8px rgba(22, 163, 74, 0); } }
+.brand-price { color: var(--green-900); font-variant-numeric: tabular-nums; }
+.brand-price small { display: block; font-weight: 400; font-size: .68rem; }
+.agent-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin: 10px 0; }
+.agent-stats div { padding: 10px 12px; border-radius: 12px; background: var(--green-100); }
+.agent-stats strong { display: block; font-size: 1.4rem; font-variant-numeric: tabular-nums; }
+
 @media (max-width: 800px) {
   .hero, .two-col { grid-template-columns: 1fr; }
   .hero { padding: 16px 22px 96px; gap: 26px; }

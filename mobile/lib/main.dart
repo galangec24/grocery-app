@@ -51,6 +51,7 @@ class _HomeShellState extends State<HomeShell> {
       if (!mounted) return;
       final state = AppScope.of(context);
       state.loadBudget();
+      state.startLiveUpdates();
       state.useDeviceLocation(); // Finds the shopper's city as soon as the app opens.
       runUpdateChecks(context);
     });

@@ -1,10 +1,10 @@
 name: Live price checks
 
-# Four times a day, Philippine daytime. This also wakes the free Render service,
-# and each wake checks the DTI and DA for newly published prices.
+# Every hour. This also wakes the free Render service, and the Price Agent runs
+# as soon as it starts, so prices stay current even when nobody has the app open.
 on:
   schedule:
-    - cron: "0 0,3,6,9 * * *"
+    - cron: "7 * * * *"
   workflow_dispatch:
 
 jobs:

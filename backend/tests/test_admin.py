@@ -272,9 +272,9 @@ def test_admin_catalog_item_becomes_searchable_and_removable(client, admin, supe
     assert "Local Brand Tuyo" not in {c["name"] for c in client.get("/api/v1/market/catalog").json()}
 
 
-def test_only_system_admin_refreshes_prices(client, admin, supervisor, monkeypatch):
+def test_only_system_admin_runs_the_agent(client, admin, supervisor, monkeypatch):
     calls = []
-    monkeypatch.setattr("app.admin.market.ingest", lambda db: calls.append(1))
-    assert client.post("/api/v1/admin/market/refresh", headers=supervisor).status_code == 403
-    assert client.post("/api/v1/admin/market/refresh", headers=admin).status_code == 202
+    monkeypatch.setattr("app.admin.agent.run_cycle", lambda db: calls.append(1))
+    assert client.post("/api/v1/admin/agent/run", headers=supervisor).status_code == 403
+    assert client.post("/api/v1/admin/agent/run", headers=admin).status_code == 202
     assert calls == [1]

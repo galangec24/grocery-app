@@ -8,10 +8,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from . import admin, api, catalog, ingestion, market
+from . import admin, agent, api, catalog, ingestion
 from .bootstrap import ensure_admin, purge_sample_data
 from .config import (
-    BASE_DIR, CORS_ORIGINS, FETCH_MARKET_DATA, MARKET_CHECK_SECONDS, PRODUCT_IDLE_SECONDS, PRODUCT_PAGE_PAUSE_SECONDS,
+    AGENT_INTERVAL_SECONDS, BASE_DIR, CORS_ORIGINS, FETCH_MARKET_DATA, PRODUCT_IDLE_SECONDS, PRODUCT_PAGE_PAUSE_SECONDS,
 )
 from .db import USING_MOCK, database, ensure_indexes
 from .sources import open_data
@@ -20,13 +20,13 @@ log = logging.getLogger("grocery")
 WEB_DIST: Path = BASE_DIR.parent / "web" / "dist"
 
 
-async def market_loop():
+async def price_agent_loop():
     while True:
         try:
-            await asyncio.to_thread(market.ingest, database)
+            await asyncio.to_thread(agent.run_cycle, database)
         except Exception:
-            log.exception("market data check failed")
-        await asyncio.sleep(MARKET_CHECK_SECONDS)
+            log.exception("price agent run failed")
+        await asyncio.sleep(AGENT_INTERVAL_SECONDS)
 
 
 def _sync_one_page(site: str) -> bool:
@@ -58,7 +58,7 @@ async def lifespan(_: FastAPI):
     ensure_admin(database)
     catalog.seed(database)
     ingestion.seed(database)
-    tasks = [asyncio.create_task(market_loop()), asyncio.create_task(product_sync_loop())] if FETCH_MARKET_DATA else []
+    tasks = [asyncio.create_task(price_agent_loop()), asyncio.create_task(product_sync_loop())] if FETCH_MARKET_DATA else []
     yield
     for task in tasks:
         task.cancel()

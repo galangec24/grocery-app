@@ -1,5 +1,6 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { api, postJson } from "../api";
+import { IconButton } from "../icons";
 
 interface Account {
   id: string;
@@ -26,11 +27,18 @@ interface PriceSource {
   notes: string;
   prices: number;
   last_import_at: string | null;
+  connector_url: string | null;
 }
 
 const PERMISSION: Record<string, string> = {
   open_license: "Open license", granted: "Permission granted", pending: "Waiting for permission", refused: "Refused",
 };
+
+interface AgentStatus {
+  live: { checked_at: string | null; updated_at: string | null };
+  coverage: { products: number; priced: number; blank: number; updated: number } | null;
+  runs: { started_at: string; status: string; data_changed: boolean; steps: { source: string; status: string; error?: string }[] }[];
+}
 
 interface ShelfReport {
   id: string;
@@ -65,6 +73,9 @@ export function AdminTools({ onChanged }: { onChanged: () => void }) {
   const [catalog, setCatalog] = useState<CatalogEntry[]>([]);
   const [reports, setReports] = useState<ShelfReport[]>([]);
   const [sources, setSources] = useState<PriceSource[]>([]);
+  const [agent, setAgent] = useState<AgentStatus | null>(null);
+  const [connecting, setConnecting] = useState<string | null>(null);
+  const [connector, setConnector] = useState("");
   const [feedResult, setFeedResult] = useState<string | null>(null);
   const [granting, setGranting] = useState<string | null>(null);
   const [proof, setProof] = useState("");
@@ -75,14 +86,15 @@ export function AdminTools({ onChanged }: { onChanged: () => void }) {
   const [item, setItem] = useState({ name: "", brand: "", category: "", size: "" });
 
   const load = useCallback(async () => {
-    const [u, r, c, s, p] = await Promise.all([
+    const [u, r, c, s, p, a] = await Promise.all([
       api<Account[]>("/admin/users", {}, true),
       api<Retailer[]>("/admin/organizations", {}, true),
       api<CatalogEntry[]>("/admin/catalog", {}, true),
       api<ShelfReport[]>("/admin/shelf-prices", {}, true),
       api<PriceSource[]>("/admin/sources", {}, true),
+      api<AgentStatus>("/admin/agent", {}, true),
     ]);
-    setUsers(u); setRetailers(r); setCatalog(c); setReports(s); setSources(p);
+    setUsers(u); setRetailers(r); setCatalog(c); setReports(s); setSources(p); setAgent(a);
   }, []);
 
   useEffect(() => { load().catch((e) => setError(e.message)); }, [load]);
@@ -140,10 +152,36 @@ export function AdminTools({ onChanged }: { onChanged: () => void }) {
 
       <section className="card">
         <div className="card-head">
-          <h2>Official price collection</h2>
-          <button className="mini" onClick={() => act(() => postJson("/admin/market/refresh", {}, true), "Checking the DTI and DA for new reports. Results appear below in a minute or two.")}>Check for new prices now</button>
+          <h2>Price Agent</h2>
+          <IconButton icon="refresh" label="Run the agent now" className="primary" onClick={() => act(() => postJson("/admin/agent/run", {}, true), "Agent started. Results appear below in a minute or two.")} />
         </div>
-        <p className="muted">Prices are checked automatically through the day. Use this after an agency publishes a new report.</p>
+        <p className="muted">Checks every permitted source every 15 minutes while the server is awake, then saves the best supported price on each product.</p>
+        {agent?.coverage && (
+          <div className="agent-stats">
+            <div><strong>{agent.coverage.products.toLocaleString()}</strong><small>Products</small></div>
+            <div><strong>{agent.coverage.priced.toLocaleString()}</strong><small>With a price</small></div>
+            <div><strong>{agent.coverage.blank.toLocaleString()}</strong><small>No evidence yet</small></div>
+            <div><strong>{agent.coverage.products ? Math.round((agent.coverage.priced / agent.coverage.products) * 100) : 0}%</strong><small>Coverage</small></div>
+          </div>
+        )}
+        {agent && agent.runs.length === 0 && <p className="muted">The agent hasn't finished a run yet.</p>}
+        {agent && agent.runs.length > 0 && (
+          <div className="table-scroll">
+            <table>
+              <thead><tr><th>Started</th><th>Result</th><th>Prices changed</th><th>Sources</th></tr></thead>
+              <tbody>
+                {agent.runs.slice(0, 5).map((run) => (
+                  <tr key={run.started_at}>
+                    <td>{new Date(run.started_at).toLocaleString("en-PH", { dateStyle: "medium", timeStyle: "short" })}</td>
+                    <td><span className={`health ${run.status === "ok" ? "good" : "bad"}`}>{run.status === "ok" ? "● Complete" : "▲ Partial"}</span></td>
+                    <td>{run.data_changed ? "Yes" : "No"}</td>
+                    <td className="wrap">{run.steps.map((step) => `${step.source}: ${step.status}`).join(", ")}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
 
       <section className="card">
@@ -163,6 +201,7 @@ export function AdminTools({ onChanged }: { onChanged: () => void }) {
                     {source.can_run && source.kind !== "government" && source.kind !== "open_data" && source.kind !== "community" && (
                       <label className="mini">Import CSV<input type="file" accept=".csv,text/csv" hidden onChange={(e) => importFeed(source, e.target.files?.[0])} /></label>
                     )}
+                    {source.can_run && source.kind.startsWith("retailer") && <IconButton icon="plusCircle" label={source.connector_url ? "Change API connector" : "Connect an API"} onClick={() => { setConnecting(source.id); setConnector(source.connector_url ?? ""); }} />}
                     {source.permission === "pending" && <button className="mini" onClick={() => { setGranting(source.id); setProof(""); }}>Record permission</button>}
                     {source.permission === "granted" && source.kind !== "community" && <button className="mini" onClick={() => act(() => send(`/admin/sources/${source.id}`, "PATCH", { permission: "pending" }), `${source.name} paused.`)}>Pause</button>}
                   </td>
@@ -179,6 +218,16 @@ export function AdminTools({ onChanged }: { onChanged: () => void }) {
           }}>
             <input required minLength={8} placeholder="Who granted permission, and when" aria-label="Permission record" value={proof} onChange={(e) => setProof(e.target.value)} />
             <button className="btn primary">Save permission</button>
+          </form>
+        )}
+        {connecting && (
+          <form className="admin-form" onSubmit={(e) => {
+            e.preventDefault();
+            act(() => send(`/admin/sources/${connecting}/connector`, "PUT", { url: connector }), "Connector saved. The agent will use it on its next run.");
+            setConnecting(null);
+          }}>
+            <input required type="url" pattern="https://.*" placeholder="https://retailer.example/prices" aria-label="Connector address" value={connector} onChange={(e) => setConnector(e.target.value)} />
+            <button className="btn primary">Save connector</button>
           </form>
         )}
         {feedResult && <p className="notice">{feedResult}</p>}

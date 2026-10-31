@@ -22,7 +22,7 @@ ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD") or ""
 
 # Turned off in tests so they never call government or map services.
 FETCH_MARKET_DATA = os.getenv("FETCH_MARKET_DATA", "true").lower() == "true"
-MARKET_CHECK_SECONDS = 3 * 60 * 60
+AGENT_INTERVAL_SECONDS = 15 * 60
 PRODUCT_PAGE_PAUSE_SECONDS = 8
 PRODUCT_IDLE_SECONDS = 30 * 60
 

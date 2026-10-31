@@ -23,16 +23,19 @@ class _PricesScreenState extends State<PricesScreen> {
   Timer? _catalogTimer;
   String? _error;
   String? _loadedIsland;
+  int _loadedVersion = 0;
   bool _loaded = false;
   String _source = 'all';
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final island = AppScope.of(context).city?.island;
-    if (!_loaded || island != _loadedIsland) {
+    final state = AppScope.of(context);
+    final island = state.city?.island;
+    if (!_loaded || island != _loadedIsland || state.liveVersion != _loadedVersion) {
       _loaded = true;
       _loadedIsland = island;
+      _loadedVersion = state.liveVersion;
       _load();
     }
   }

@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from pymongo.database import Database
 
 from . import comparison as cmp
-from . import catalog, community, location, market
+from . import catalog, community, live, location, market
 from .config import LOGIN_RATE_PER_MINUTE, MAX_MULTI_SEARCH_ITEMS, NEARBY_RADIUS_KM, SEARCH_RATE_PER_MINUTE
 from .db import get_db, utcnow
 from .security import RateLimiter, current_user, issue_token, read_token, verify_password
@@ -77,6 +77,12 @@ def market_prices(
     if category:
         rows = [r for r in rows if r["category"] == category]
     return {"count": len(rows), "results": rows, "generated_at": cmp.iso(utcnow())}
+
+
+@router.get("/market/live")
+def market_live(db: Database = Depends(get_db)):
+    """Apps ask this often. A new version number means prices have changed."""
+    return live.state(db)
 
 
 @router.get("/market/suggest", dependencies=[Depends(limit_search)])

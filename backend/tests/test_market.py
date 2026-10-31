@@ -215,9 +215,9 @@ def test_brands_outside_official_lists_are_searchable(client, query):
     assert any(all(t in item["keywords"] for t in tokens) for item in items)
 
 
-def test_catalog_never_contains_prices(client):
+def test_catalog_prices_always_name_their_evidence(client):
     for item in client.get("/api/v1/market/catalog").json():
-        assert not any("price" in key for key in item)
+        assert item["auto_price"] is None or (item["auto_price"]["label"] and item["auto_price"]["kind"])
 
 
 def test_catalog_item_waits_for_a_shelf_price(loaded, client):
