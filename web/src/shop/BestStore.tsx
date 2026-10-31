@@ -1,65 +1,8 @@
-import L from "leaflet";
-import "leaflet/dist/leaflet.css";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { api, BestStores, postJson, query, Route } from "../api";
+import { useEffect, useMemo, useState } from "react";
+import { BestStores, postJson } from "../api";
 import { peso, timeAgo } from "../format";
 import { useLocation } from "../location";
-
-const pin = (className: string, label: string) => L.divIcon({
-  className: "", iconSize: [34, 42], iconAnchor: [17, 42],
-  html: `<span class="pin ${className}"><b>${label}</b></span>`,
-});
-
-/** An in-app map from the shopper's real position to the store, with the road route. */
-function RouteMap({ store }: { store: { store_name: string; latitude: number; longitude: number } }) {
-  const { position } = useLocation();
-  const holder = useRef<HTMLDivElement>(null);
-  const [route, setRoute] = useState<Route | null>(null);
-
-  useEffect(() => {
-    if (!position) return;
-    api<Route>(`/location/route${query({ from_lat: position.latitude, from_lon: position.longitude, to_lat: store.latitude, to_lon: store.longitude })}`)
-      .then(setRoute).catch(() => setRoute(null));
-  }, [position, store.latitude, store.longitude]);
-
-  useEffect(() => {
-    if (!holder.current) return;
-    const map = L.map(holder.current, { scrollWheelZoom: false });
-    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      maxZoom: 19, attribution: "© OpenStreetMap contributors",
-    }).addTo(map);
-    const target: L.LatLngTuple = [store.latitude, store.longitude];
-    L.marker(target, { icon: pin("store", "₱") }).addTo(map).bindTooltip(store.store_name);
-    const points: L.LatLngTuple[] = [target];
-    if (position) {
-      const here: L.LatLngTuple = [position.latitude, position.longitude];
-      L.marker(here, { icon: pin("me", "•") }).addTo(map).bindTooltip("You are here");
-      points.push(here);
-    }
-    if (route) {
-      const line = L.polyline(route.path as L.LatLngTuple[], { color: "#14532d", weight: 5, opacity: .85, dashArray: route.road ? undefined : "8 8" }).addTo(map);
-      map.fitBounds(line.getBounds().pad(0.15));
-    } else if (points.length > 1) {
-      map.fitBounds(L.latLngBounds(points).pad(0.25));
-    } else {
-      map.setView(target, 15);
-    }
-    return () => { map.remove(); };
-  }, [store.latitude, store.longitude, store.store_name, position, route]);
-
-  return (
-    <>
-      <div className="route-map" ref={holder} role="img" aria-label={`Map from your location to ${store.store_name}`} />
-      {route && (
-        <p className="route-facts">
-          <b>{route.distance_km.toFixed(1)} km</b>{route.road ? " by road" : " straight-line"}
-          {route.duration_min !== null && <> · about <b>{route.duration_min} min</b> by car</>}
-        </p>
-      )}
-      {!position && <p className="hint">Allow location to see the route from where you are.</p>}
-    </>
-  );
-}
+import { RouteMap } from "../StoreMap";
 
 export function BestStore({ items, total, official }: { items: string[]; total: number; official: number }) {
   const { city, position } = useLocation();

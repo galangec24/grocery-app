@@ -179,3 +179,19 @@ class _RouteMap extends StatelessWidget {
     );
   }
 }
+
+
+/// Shows a store on a map inside the app.
+void showStoreMap(BuildContext context, String name, double latitude, double longitude) {
+  showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    builder: (sheet) => SizedBox(
+      height: MediaQuery.sizeOf(sheet).height * 0.7,
+      child: Column(children: [
+        Padding(padding: const EdgeInsets.all(14), child: Text(name, style: Theme.of(sheet).textTheme.titleMedium)),
+        Expanded(child: _RouteMap(store: LatLng(latitude, longitude), me: null, path: const [])),
+      ]),
+    ),
+  );
+}

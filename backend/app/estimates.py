@@ -9,6 +9,7 @@ import re
 from . import comparison as cmp
 
 LABEL = "Rough guide, not a store price"
+ADMIN_LABEL = "Estimate set by our team, not a store price"
 SIZE = re.compile(r"(\d+(?:\.\d+)?)\s*(kg|g|mg|ml|cl|l|oz)\b", re.I)
 UNITS = {"kg": 1000, "g": 1, "mg": 0.001, "l": 1000, "cl": 10, "ml": 1, "oz": 28}
 BROAD = re.compile(r"beauty & fragrance", re.I)
@@ -90,6 +91,16 @@ def guide(name: str, category: str = "", keywords: str = "") -> dict | None:
     if not category:
         return None
     return _result(next(price for words, price in DEPARTMENTS if words.search(f"{category} {keywords}")))
+
+
+def for_doc(doc: dict) -> dict | None:
+    """What a catalog product shows: a real price, then an administrator's estimate, then a guide."""
+    saved = doc.get("auto_price")
+    if saved and saved["kind"] == "store":
+        return saved
+    if doc.get("guide_price"):
+        return {"price": doc["guide_price"], "kind": "guide", "label": ADMIN_LABEL, "date": None, "by_admin": True}
+    return saved or guide(f'{doc["name"]} {doc["size"]}', doc["category"], doc["keywords"])
 
 
 def _result(value: float) -> dict:

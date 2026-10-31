@@ -1,4 +1,6 @@
 """Public and shopper endpoints (spec section 9.1)."""
+import secrets
+
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile
 from pydantic import BaseModel, Field, field_validator, model_validator
 from pymongo.database import Database
@@ -8,6 +10,7 @@ from . import catalog, community, live, location, market, proofs
 from .config import LOGIN_RATE_PER_MINUTE, MAX_MULTI_SEARCH_ITEMS, NEARBY_RADIUS_KM, SEARCH_RATE_PER_MINUTE
 from .db import get_db, utcnow
 from .db import new_id
+from . import security
 from .security import RateLimiter, current_user, hash_password, issue_token, read_token, verify_password
 
 router = APIRouter(prefix="/api/v1")
@@ -100,6 +103,11 @@ def market_suggest(
 @router.get("/market/malls", dependencies=[Depends(limit_search)])
 def market_malls(city: str | None = Query(None, max_length=80), db: Database = Depends(get_db)):
     return community.malls(db, city)
+
+
+@router.get("/market/cities", dependencies=[Depends(limit_search)])
+def market_cities(db: Database = Depends(get_db)):
+    return community.cities(db)
 
 
 @router.get("/market/mall-prices", dependencies=[Depends(limit_search)])
@@ -434,6 +442,31 @@ def register(body: RegisterRequest, db: Database = Depends(get_db)):
         "roles": [{"role": "shopper", "organization_id": None}], "created_at": utcnow(),
     }
     db.users.insert_one(user)
+    return {
+        "access_token": issue_token(user["_id"], "access"),
+        "refresh_token": issue_token(user["_id"], "refresh"),
+        "user": user_json(user),
+    }
+
+
+class GoogleLogin(BaseModel):
+    id_token: str = Field(min_length=20, max_length=4096)
+
+
+@router.post("/auth/google", dependencies=[Depends(limit_login)])
+def google_login(body: GoogleLogin, db: Database = Depends(get_db)):
+    claims = security.read_google_token(body.id_token)
+    email = claims["email"].strip().lower()
+    user = db.users.find_one({"email": email})  # Google has verified this email, so it joins any existing account.
+    if user is None:
+        user = {
+            "_id": new_id(), "email": email, "full_name": (claims.get("name") or email.split("@")[0])[:120],
+            "password_hash": hash_password(secrets.token_urlsafe(32)), "status": "active",
+            "roles": [{"role": "shopper", "organization_id": None}], "created_at": utcnow(),
+        }
+        db.users.insert_one(user)
+    if user["status"] != "active":
+        raise HTTPException(401, "This account is not active")
     return {
         "access_token": issue_token(user["_id"], "access"),
         "refresh_token": issue_token(user["_id"], "refresh"),

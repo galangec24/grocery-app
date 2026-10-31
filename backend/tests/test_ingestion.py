@@ -149,3 +149,11 @@ def test_branches_group_under_their_chain(client):
     assert client.get("/api/v1/market/mall-prices", params={"mall": "SM"}).json()["count"] == 0
     assert community.chain_of("SM Hypermarket Cebu") == community.chain_of("SM") == "SM"
     assert community.chain_of("SMART Store") == "SMART Store"
+
+
+def test_location_filter_lists_places_with_prices(client, admin):
+    grant(client, admin)
+    upload(client, admin, COLUMNS + f"WalterMart,Cebu,10.31,123.89,Cebu City,Piatos Cheese,85g,,40,{TODAY}\nWalterMart,Davao,7.07,125.6,Davao City,Piatos Cheese,85g,,41,{TODAY}\n")
+    assert {c["name"] for c in client.get("/api/v1/market/cities").json()} == {"Cebu City", "Davao City"}
+    found = client.get("/api/v1/market/mall-prices", params={"mall": "WalterMart", "city": "Davao City"}).json()
+    assert [r["store_name"] for r in found["results"]] == ["WalterMart Davao"]

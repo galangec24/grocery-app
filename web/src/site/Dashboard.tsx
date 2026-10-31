@@ -169,7 +169,7 @@ function Console({ onExpired }: { onExpired: () => void }) {
     <main className="console">
       <div className="console-head">
         <h1>Dashboard</h1>
-        <p className="muted">Refreshes every 30 seconds</p>
+        <p className="muted">Your control room for prices, shoppers and mall connections. Refreshes every 30 seconds.</p>
       </div>
       {notice && <p className="notice" role="status">{notice}</p>}
 
@@ -187,6 +187,7 @@ function Console({ onExpired }: { onExpired: () => void }) {
 
       <section className="card">
         <h2>Official price collection</h2>
+        <p className="muted">Each government report the app has read: when it was published, how many prices it held, and whether it loaded.</p>
         <div className="table-scroll">
           <table>
             <thead><tr><th>Source</th><th>Report date</th><th className="num">Rows</th><th>Result</th><th>Checked</th><th>Note</th></tr></thead>
@@ -218,11 +219,13 @@ function Console({ onExpired }: { onExpired: () => void }) {
 
       {overview.retailers.length > 0 && <section className="card">
         <h2>Price freshness by retailer</h2>
+        <p className="muted">How recent each retailer's prices are. Stale prices are hidden from shoppers by default.</p>
         <FreshnessChart retailers={overview.retailers} />
       </section>}
 
       <section className="card">
         <h2>Integrations</h2>
+        <p className="muted">Live connections to retailers. Test checks the connection, and Sync now fetches prices straight away.</p>
         <div className="table-scroll">
           <table>
             <thead>
@@ -254,6 +257,7 @@ function Console({ onExpired }: { onExpired: () => void }) {
         <CsvImport retailers={overview.retailers} onDone={load} />
         <section className="card">
           <h2>Possible price errors</h2>
+          <p className="muted">Prices far from the typical price for the same product, which may be typing mistakes.</p>
           {quality?.price_discrepancies.length ? (
             <ul className="plain">
               {quality.price_discrepancies.slice(0, 6).map((d) => (
@@ -268,6 +272,7 @@ function Console({ onExpired }: { onExpired: () => void }) {
 
       <section className="card">
         <h2>Recent sync jobs</h2>
+        <p className="muted">Each retailer data import, with how many prices were read, changed or refused.</p>
         <div className="table-scroll">
           <table>
             <thead>
@@ -292,6 +297,7 @@ function Console({ onExpired }: { onExpired: () => void }) {
 
       <section className="card">
         <h2>Audit log</h2>
+        <p className="muted">A record of who changed what, for accountability.</p>
         {audit.length ? (
           <ul className="plain">
             {audit.slice(0, 8).map((a, i) => (

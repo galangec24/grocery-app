@@ -69,7 +69,7 @@ export interface CatalogItem {
   image_url: string | null;
   source: string;
   keywords: string;
-  auto_price: { price: number; kind: string; label: string; low?: number; high?: number } | null;
+  auto_price: { price: number; kind: string; label: string; low?: number; high?: number; by_admin?: boolean } | null;
 }
 
 export interface BasketLine {

@@ -17,6 +17,7 @@ ACCESS_TOKEN_MINUTES = 30
 REFRESH_TOKEN_DAYS = 14
 
 # The dashboard's first account. Created once; changing these later has no effect.
+FIREBASE_PROJECT_ID = os.getenv("FIREBASE_PROJECT_ID", "grocery-app-71cfd")
 ADMIN_EMAIL = (os.getenv("ADMIN_EMAIL") or "").strip().lower()
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD") or ""
 

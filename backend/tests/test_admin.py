@@ -278,3 +278,27 @@ def test_only_system_admin_runs_the_agent(client, admin, supervisor, monkeypatch
     assert client.post("/api/v1/admin/agent/run", headers=supervisor).status_code == 403
     assert client.post("/api/v1/admin/agent/run", headers=admin).status_code == 202
     assert calls == [1]
+
+
+def test_admin_estimate_replaces_the_guide_but_never_a_real_price(client, db, admin, supervisor):
+    item = client.get("/api/v1/market/catalog", params={"q": "piatos cheese 85g"}).json()[0]
+    url = f'/api/v1/admin/catalog/{item["id"]}/estimate'
+    assert client.put(url, json={"price": 44}, headers=supervisor).status_code == 403
+    assert client.put(url, json={"price": 44}, headers=admin).status_code == 200
+    shown = client.get("/api/v1/market/catalog", params={"q": "piatos cheese 85g"}).json()[0]["auto_price"]
+    assert shown["price"] == 44 and shown["by_admin"] and "not a store price" in shown["label"]
+    line = client.post("/api/v1/market/basket", json={"items": [{"query": "piatos cheese 85g"}]}).json()["lines"][0]
+    assert line["status"] == "estimated" and line["unit_price"] == 44
+    assert client.get("/api/v1/market/suggest", params={"q": "piatos cheese 85g"}).json()[0]["price"] == 44
+    assert client.post("/api/v1/market/best-stores", json={"items": ["piatos cheese 85g"]}).json()["best"] is None
+    db.catalog_items.update_one({"_id": item["id"]}, {"$set": {"auto_price": {"price": 41, "kind": "store", "label": "SM", "date": None}}})
+    assert client.get("/api/v1/market/catalog", params={"q": "piatos cheese 85g"}).json()[0]["auto_price"]["price"] == 41
+
+
+def test_clearing_an_estimate_restores_the_guide(client, admin):
+    item = client.get("/api/v1/market/catalog", params={"q": "piatos cheese 85g"}).json()[0]
+    url = f'/api/v1/admin/catalog/{item["id"]}/estimate'
+    client.put(url, json={"price": 44}, headers=admin)
+    client.put(url, json={"price": None}, headers=admin)
+    assert client.get("/api/v1/market/catalog", params={"q": "piatos cheese 85g"}).json()[0]["auto_price"] == item["auto_price"]
+    assert client.put(url, json={"price": -1}, headers=admin).status_code == 422

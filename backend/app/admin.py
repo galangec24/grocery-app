@@ -6,7 +6,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPExcepti
 from pydantic import BaseModel, Field, field_validator
 from pymongo.database import Database
 
-from . import agent, catalog, community, ingestion, proofs
+from . import agent, catalog, community, ingestion, live, proofs
 from .sources import open_data
 from . import comparison as cmp
 from .config import MAX_CSV_BYTES
@@ -275,6 +275,21 @@ def add_catalog_item(body: CatalogCreate, user: dict = Depends(require_system_ad
     db.catalog_items.insert_one(doc)
     audit(db, user, "catalog.added", None, f'{doc["name"]} {doc["size"]}')
     return {"id": doc["_id"]}
+
+
+class EstimateUpdate(BaseModel):
+    price: float | None = Field(None, gt=0, le=999999)  # Empty returns the product to the rough guide.
+
+
+@router.put("/catalog/{item_id}/estimate")
+def set_estimate(item_id: str, body: EstimateUpdate, user: dict = Depends(require_system_admin), db: Database = Depends(get_db)):
+    doc = db.catalog_items.find_one({"_id": item_id})
+    if doc is None:
+        raise HTTPException(404, "Product not found")
+    db.catalog_items.update_one({"_id": item_id}, {"$set": {"guide_price": body.price}})
+    audit(db, user, "catalog.estimate", None, f'{doc["name"]} {doc["size"]}: {body.price if body.price else "guide restored"}')
+    live.bump(db)
+    return {"ok": True}
 
 
 @router.delete("/catalog/{item_id}")

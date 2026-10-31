@@ -242,8 +242,8 @@ def suggestions(db: Database, query: str, island: str | None, city: str | None, 
     for product in products[:limit - len(results)]:
         name = f'{product["name"]} {product["size"]}'.strip()
         seen = community.lowest_by_query(reports, name)
-        guess = None if seen else meaning.estimate(rows, name, product["name"])
-        rough = None if seen or guess else estimates.guide(name, product["category"], product["keywords"])
+        guess = None if seen or product.get("guide_price") else meaning.estimate(rows, name, product["name"])
+        rough = None if seen or guess else estimates.for_doc(product)
         results.append({
             "id": product["_id"], "kind": "product", "name": product["name"], "size": product["size"],
             "category": product["category"], "image_url": product.get("image_url"), "unit": None, "price_id": None,
@@ -330,6 +330,10 @@ def basket(db: Database, rows: list[dict], items: list[dict], find_products, rep
         elif (seen := community.lowest_by_query(elsewhere, query)):
             status, unit_centavos, label = "reported", seen["price_centavos"], seen["item_name"]
             report = {**community.report_json(seen), "elsewhere": True}
+        elif brand and brand[0]["auto_price"].get("by_admin"):
+            status, unit_centavos = "estimated", round(brand[0]["auto_price"]["price"] * 100)
+            label = f'{brand[0]["name"]} {brand[0]["size"]}'.strip()
+            report = {"origin": brand[0]["auto_price"]["label"], "price": brand[0]["auto_price"]["price"]}
         elif (guess := meaning.estimate(rows, query, brand[0]["name"] if brand else "")):
             status, unit_centavos = "estimated", round(guess["price"] * 100)
             label = f'{brand[0]["name"]} {brand[0]["size"]}'.strip() if brand else query

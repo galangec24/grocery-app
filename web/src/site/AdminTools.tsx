@@ -1,5 +1,6 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { api, postJson } from "../api";
+import { api, CatalogItem, postJson, query } from "../api";
+import { peso } from "../format";
 import { Icon, IconButton } from "../icons";
 
 interface Account {
@@ -86,6 +87,9 @@ export function AdminTools({ onChanged }: { onChanged: () => void }) {
   const [form, setForm] = useState({ email: "", full_name: "", password: "", role: "supervisor", organization_id: "" });
   const [retailer, setRetailer] = useState("");
   const [item, setItem] = useState({ name: "", brand: "", category: "", size: "" });
+  const [estimateTerm, setEstimateTerm] = useState("");
+  const [estimateItems, setEstimateItems] = useState<CatalogItem[] | null>(null);
+  const [estimates, setEstimates] = useState<Record<string, string>>({});
 
   const load = useCallback(async () => {
     const [u, r, c, s, p, a] = await Promise.all([
@@ -124,6 +128,15 @@ export function AdminTools({ onChanged }: { onChanged: () => void }) {
       );
       setFeedResult(`${source.name}: ${result.imported} imported, ${result.rejected} rejected.${result.rejections[0] ? ` Row ${result.rejections[0].row}: ${result.rejections[0].reason}.` : ""}`);
     }, "Import finished.");
+  }
+
+  const findEstimates = () => api<CatalogItem[]>(`/market/catalog${query({ q: estimateTerm, limit: 10 })}`).then(setEstimateItems);
+
+  function saveEstimate(product: CatalogItem, price: number | null) {
+    act(async () => {
+      await send(`/admin/catalog/${encodeURIComponent(product.id)}/estimate`, "PUT", { price });
+      await findEstimates();
+    }, price === null ? "Rough guide restored." : "Estimate saved. Open apps will show it within 30 seconds.");
   }
 
   function addMall(event: FormEvent) {
@@ -167,6 +180,38 @@ export function AdminTools({ onChanged }: { onChanged: () => void }) {
     <>
       {notice && <p className="notice" role="status">{notice}</p>}
       {error && <p className="error" role="alert">{error}</p>}
+
+      <section className="card">
+        <h2>Change estimated prices</h2>
+        <p className="muted">Replace a rough guide with your own estimate. Shoppers still see it marked as an estimate, and any real store price replaces it. It never counts towards the cheapest store.</p>
+        <form className="admin-form" onSubmit={(e) => { e.preventDefault(); findEstimates().catch((x) => setError(x.message)); }}>
+          <input required placeholder="Search a product" aria-label="Search estimated products" value={estimateTerm} onChange={(e) => setEstimateTerm(e.target.value)} />
+          <button className="btn primary">Find</button>
+        </form>
+        {estimateItems?.length === 0 && <p className="muted">No products match.</p>}
+        {estimateItems && estimateItems.length > 0 && (
+          <div className="table-scroll">
+            <table>
+              <thead><tr><th>Product</th><th className="num">Shown now</th><th>New estimate</th><th /></tr></thead>
+              <tbody>
+                {estimateItems.map((product) => (
+                  <tr key={product.id}>
+                    <td>{product.name} {product.size}<small className="block-note">{product.auto_price?.label}</small></td>
+                    <td className="num">{product.auto_price ? peso(product.auto_price.price) : "–"}</td>
+                    <td>{product.auto_price?.kind === "store" ? <span className="muted">Real price</span> : (
+                      <input type="number" min="0.25" step="0.25" aria-label={`New estimate for ${product.name}`} value={estimates[product.id] ?? ""} onChange={(e) => setEstimates({ ...estimates, [product.id]: e.target.value })} />
+                    )}</td>
+                    <td className="row-actions">
+                      {product.auto_price?.kind !== "store" && <button className="mini" disabled={!Number(estimates[product.id])} onClick={() => saveEstimate(product, Number(estimates[product.id]))}>Save</button>}
+                      {product.auto_price?.by_admin && <button className="mini" onClick={() => saveEstimate(product, null)}>Reset</button>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
 
       <section className="card">
         <div className="card-head">

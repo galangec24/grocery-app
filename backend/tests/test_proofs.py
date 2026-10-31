@@ -4,7 +4,7 @@ from datetime import timedelta
 
 import pytest
 
-from app import market, proofs
+from app import market, proofs, security
 from app.db import utcnow
 from conftest import shopper
 from test_market import SRP_PDF, SRP_URL, dti_srp
@@ -244,3 +244,37 @@ def test_impact_counts_verified_work_and_needs_an_account(client, db):
     approved_proofs(db, me(client, headers), 2)
     result = client.get("/api/v1/market/proofs/impact", headers=headers).json()
     assert (result["verified"], result["items"], result["stores"], result["to_trusted"]) == (2, 2, 1, 3)
+
+
+def google(monkeypatch, **claims):
+    values = dict(email="gmail.user@gmail.com", email_verified=True, name="Gmail User") | claims
+    monkeypatch.setattr(security, "read_google_token", lambda token: values)
+
+
+def test_google_sign_in_creates_a_shopper_once(client, db, monkeypatch):
+    google(monkeypatch)
+    body = {"id_token": "x" * 30}
+    first = client.post("/api/v1/auth/google", json=body).json()
+    second = client.post("/api/v1/auth/google", json=body).json()
+    assert first["user"]["id"] == second["user"]["id"] and first["user"]["roles"][0]["role"] == "shopper"
+    assert db.users.count_documents({"email": "gmail.user@gmail.com"}) == 1
+    headers = {"Authorization": f'Bearer {first["access_token"]}'}
+    assert client.get("/api/v1/users/me", headers=headers).status_code == 200
+
+
+def test_google_sign_in_joins_an_existing_account(client, monkeypatch):
+    headers = shopper(client)
+    google(monkeypatch, email="SHOPPER@example.com")
+    user = client.post("/api/v1/auth/google", json={"id_token": "x" * 30}).json()["user"]
+    assert user["id"] == me(client, headers)
+
+
+def test_google_sign_in_respects_a_disabled_account(client, db, monkeypatch):
+    shopper(client)
+    db.users.update_one({"email": "shopper@example.com"}, {"$set": {"status": "disabled"}})
+    google(monkeypatch, email="shopper@example.com")
+    assert client.post("/api/v1/auth/google", json={"id_token": "x" * 30}).status_code == 401
+
+
+def test_forged_google_tokens_are_refused(client):
+    assert client.post("/api/v1/auth/google", json={"id_token": "not.a.real.token.at.all"}).status_code == 401

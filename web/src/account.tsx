@@ -51,6 +51,21 @@ function AccountDialog({ onClose, onDone }: { onClose: () => void; onDone: (user
 
   useEffect(() => { dialog.current?.showModal(); }, []);
 
+  async function withGoogle() {
+    setError(null);
+    try {
+      const { googleIdToken } = await import("./google");
+      const result = await postJson<{ access_token: string; refresh_token: string; user: Shopper }>("/auth/google", { id_token: await googleIdToken() });
+      shopperSession.set(result);
+      onDone(result.user);
+      dialog.current?.close();
+    } catch (e) {
+      const code = (e as { code?: string }).code;
+      if (code === "auth/popup-closed-by-user" || code === "auth/cancelled-popup-request") return;
+      setError(code === "auth/operation-not-allowed" ? "Google sign-in isn't switched on yet. Use your email for now." : (e as Error).message);
+    }
+  }
+
   async function submit(event: FormEvent) {
     event.preventDefault();
     setError(null);
@@ -71,6 +86,8 @@ function AccountDialog({ onClose, onDone }: { onClose: () => void; onDone: (user
         <button type="button" className="modal-close" aria-label="Close" onClick={() => dialog.current?.close()}><Icon name="close" size={18} /></button>
         <h2>{mode === "register" ? "Join the price community" : "Welcome back"}</h2>
         <p className="muted">Sign in to share what you paid and help shoppers in your city. Lists and drafts work without an account.</p>
+        <button type="button" className="btn block with-icon google-btn" onClick={withGoogle}><b aria-hidden="true">G</b>Continue with Google</button>
+        <p className="or"><span>or use your email</span></p>
         {mode === "register" && (
           <label>Your name<input required minLength={2} autoComplete="name" value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} /></label>
         )}

@@ -127,9 +127,21 @@ input, select, textarea {
 .city-form { display: flex; gap: 8px; margin-top: 12px; }
 .note { margin-top: 10px; padding: 9px 12px; background: #fff6e0; border-radius: 10px; font-size: .9rem; }
 .stores { list-style: none; padding: 0; margin: 12px 0 4px; display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px; }
-.stores a { display: grid; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; text-decoration: none; color: inherit; transition: transform .15s, box-shadow .15s; }
-.stores a:hover { transform: translateY(-2px); box-shadow: 0 8px 14px rgba(20, 83, 45, .14); }
+.stores button { display: grid; width: 100%; font: inherit; text-align: left; cursor: pointer; background: none; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; text-decoration: none; color: inherit; transition: transform .15s, box-shadow .15s; }
+.stores button:hover { transform: translateY(-2px); box-shadow: 0 8px 14px rgba(20, 83, 45, .14); }
 .controls { display: grid; grid-template-columns: 1fr 200px 180px 160px; gap: 10px; }
+.map-dialog .modal-card { width: min(720px, 94vw); }
+.stores button:focus-visible { outline: 2px solid var(--green-900); outline-offset: 2px; border-radius: 8px; }
+.google-btn { display: flex; justify-content: center; align-items: center; gap: 10px; }
+.google-btn b { color: #2a78d6; font-size: 1.1rem; }
+.or { text-align: center; font-size: .82rem; color: #667; margin: 2px 0; }
+.filter-help { margin: 8px 0 4px; }
+.table-help { margin: 6px 0 10px; font-size: .9rem; }
+.table-help summary { cursor: pointer; font-weight: 700; }
+.table-help dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 8px 16px; margin: 8px 0 0; }
+.table-help dt { font-weight: 700; }
+.table-help dd { margin: 0; }
+.block-note { display: block; color: #667; }
 .saving { margin: 2px 0 6px; font-weight: 700; color: var(--green-900); }
 .impact { display: grid; gap: 2px; margin: 0 0 12px; padding: 10px 12px; border-radius: 12px; background: #f5f3e8; }
 .impact span { font-size: .85rem; }

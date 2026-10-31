@@ -12,12 +12,13 @@ from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pymongo.database import Database
 
-from .config import ACCESS_TOKEN_MINUTES, REFRESH_TOKEN_DAYS, SECRET_KEY
+from .config import ACCESS_TOKEN_MINUTES, FIREBASE_PROJECT_ID, REFRESH_TOKEN_DAYS, SECRET_KEY
 from .db import get_db, new_id, utcnow
 
 ALGORITHM = "HS256"
 SCRYPT = {"n": 2**14, "r": 8, "p": 1}
 bearer = HTTPBearer(auto_error=False)
+GOOGLE_KEYS = jwt.PyJWKClient("https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com")
 
 
 def hash_password(password: str) -> str:
@@ -44,6 +45,19 @@ def read_token(token: str, kind: str) -> str:
     if payload.get("typ") != kind:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or expired token")
     return payload["sub"]
+
+
+def read_google_token(token: str) -> dict:
+    """Checks a Firebase sign-in against Google's keys and returns who it proves."""
+    try:
+        key = GOOGLE_KEYS.get_signing_key_from_jwt(token).key
+        claims = jwt.decode(token, key, algorithms=["RS256"], audience=FIREBASE_PROJECT_ID,
+                            issuer=f"https://securetoken.google.com/{FIREBASE_PROJECT_ID}")
+    except jwt.PyJWTError:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Google sign-in could not be verified")
+    if not claims.get("email") or not claims.get("email_verified"):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Google sign-in needs a verified email")
+    return claims
 
 
 def current_user(

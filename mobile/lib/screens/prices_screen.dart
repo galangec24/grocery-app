@@ -1,9 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../api.dart';
+import '../best_store.dart';
 import '../drafts.dart';
 import '../state.dart';
 import '../widgets.dart';
@@ -327,10 +327,7 @@ class _CityCard extends StatelessWidget {
                 return ActionChip(
                   avatar: Icon(store.type == 'Mall' ? Icons.storefront : Icons.shopping_cart, size: 18),
                   label: Text('${store.name}\n${store.distanceKm.toStringAsFixed(1)} km'),
-                  onPressed: () => launchUrl(
-                    Uri.parse('https://www.google.com/maps/search/?api=1&query=${store.latitude},${store.longitude}'),
-                    mode: LaunchMode.externalApplication,
-                  ),
+                  onPressed: () => showStoreMap(context, store.name, store.latitude, store.longitude),
                 );
               },
             ),

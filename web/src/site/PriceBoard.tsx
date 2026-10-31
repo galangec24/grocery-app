@@ -1,11 +1,12 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { api, CatalogItem, Mall, MallPrice, MarketSummary, PriceRow, query, Suggestion } from "../api";
+import { api, CatalogItem, CityStore, Mall, MallPrice, MarketSummary, PriceRow, query, Suggestion } from "../api";
 import { addItems, newDraft, readDrafts, saveDraft } from "../drafts";
-import { longDate, mapUrl, peso, timeAgo } from "../format";
+import { longDate, peso, timeAgo } from "../format";
 import { Icon, IconButton } from "../icons";
 import { LiveBadge, useLive } from "../live";
 import { useLocation } from "../location";
 import { ProductImage, SearchBox } from "../SearchBox";
+import { StoreMapDialog } from "../StoreMap";
 import { ModalSubject, PriceModal } from "./PriceModal";
 
 type SortKey = "commodity" | "price" | "change_pct";
@@ -42,7 +43,8 @@ export function Change({ row }: { row: PriceRow }) {
   );
 }
 
-function CityPanel() {
+function CityPanel({ onBrowse }: { onBrowse: (store: CityStore) => void }) {
+  const [mapped, setMapped] = useState<CityStore | null>(null);
   const { city, busy, error, locate, chooseCity, clear } = useLocation();
   const [name, setName] = useState("");
   const [all, setAll] = useState(false);
@@ -85,16 +87,21 @@ function CityPanel() {
           <ul className="stores">
             {(all ? city.stores : city.stores.slice(0, 8)).map((s) => (
               <li key={`${s.name}${s.latitude}`}>
-                <a href={mapUrl(s.latitude, s.longitude)} target="_blank" rel="noreferrer">
+                <button onClick={() => setMapped(s)}>
                   <strong>{s.name}</strong>
                   <small>{s.type} · {s.distance_km.toFixed(1)} km straight-line</small>
-                </a>
+                </button>
               </li>
             ))}
           </ul>
           {city.stores.length > 8 && <button className="link" onClick={() => setAll(!all)}>{all ? "Show fewer" : `Show all ${city.stores.length}`}</button>}
-          <p className="hint">{city.attribution}. Store-by-store prices will appear once retailers connect their data.</p>
+          <p className="hint">Tap a store for its 3D map and route. {city.attribution}.</p>
         </>
+      )}
+      {mapped && (
+        <StoreMapDialog store={{ store_name: mapped.name, latitude: mapped.latitude, longitude: mapped.longitude }}
+          detail={`${mapped.type} · ${mapped.distance_km.toFixed(1)} km straight-line`}
+          onClose={() => setMapped(null)} onBrowse={() => onBrowse(mapped)} />
       )}
     </section>
   );
@@ -117,6 +124,9 @@ export function PriceBoard({ compact }: { compact?: boolean }) {
   const [aisles, setAisles] = useState<{ name: string; count: number }[]>([]);
   const [malls, setMalls] = useState<Mall[]>([]);
   const [mall, setMall] = useState("");
+  const [area, setArea] = useState("here");
+  const [places, setPlaces] = useState<{ name: string; prices: number }[]>([]);
+  const areaCity = area === "here" ? city?.city : area === "all" ? undefined : area;
   const [mallPrices, setMallPrices] = useState<MallPrice[]>([]);
   const island = city?.island;
   const { version } = useLive();
@@ -151,20 +161,35 @@ export function PriceBoard({ compact }: { compact?: boolean }) {
   }, [term, island]);
 
   useEffect(() => {
-    api<Mall[]>(`/market/malls${query({ city: city?.city })}`).then(setMalls).catch(() => setMalls([]));
-  }, [city?.city, version]);
+    api<Mall[]>(`/market/malls${query({ city: areaCity })}`).then(setMalls).catch(() => setMalls([]));
+    api<{ name: string; prices: number }[]>("/market/cities").then(setPlaces).catch(() => setPlaces([]));
+  }, [areaCity, version]);
 
   useEffect(() => {
     const words = term.trim();
     if (!mall && !words) { setMallPrices([]); return; }
     let live = true;
     const timer = setTimeout(() => {
-      api<{ results: MallPrice[] }>(`/market/mall-prices${query({ mall, q: words, city: city?.city })}`)
+      api<{ results: MallPrice[] }>(`/market/mall-prices${query({ mall, q: words, city: areaCity })}`)
         .then((found) => { if (live) setMallPrices(found.results); })
         .catch(() => { if (live) setMallPrices([]); });
     }, 250);
     return () => { live = false; clearTimeout(timer); };
-  }, [mall, term, city?.city, version]);
+  }, [mall, term, areaCity, version]);
+
+  // Stores found near the shopper can be picked before any of them has prices.
+  const mallOptions = useMemo(() => {
+    const local = area === "here" ? city?.stores ?? [] : [];
+    const extra = local.map((s) => s.name).filter((name, index, all) =>
+      all.indexOf(name) === index && !malls.some((m) => name.toLowerCase().startsWith(`${m.name.toLowerCase()} `)));
+    return [...malls, ...extra.map((name) => ({ name, prices: 0, stores: 1 }))];
+  }, [malls, city, area]);
+
+  function browseStore(store: CityStore) {
+    const known = malls.find((m) => store.name.toLowerCase().startsWith(`${m.name.toLowerCase()} `));
+    setArea("here");
+    setMall(known?.name ?? store.name);
+  }
 
   const categories = useMemo(
     () => [...new Set((rows ?? []).filter((r) => !source || r.source === source).map((r) => r.category))].sort(),
@@ -230,14 +255,14 @@ export function PriceBoard({ compact }: { compact?: boolean }) {
     <div className="board">
       {!compact && (
         <div className="tiles3d">
-          <div className="tile3d"><span>Official prices tracked</span><strong>{summary?.items ?? "–"}</strong><small>{summary?.categories ?? "–"} categories</small></div>
-          <div className="tile3d"><span>Market prices updated</span><strong className="date">{longDate(dpi?.report_date ?? null)}</strong><small>DA Daily Price Index</small></div>
-          <div className="tile3d"><span>SRP bulletin in force</span><strong className="date">{longDate(srp?.report_date ?? null)}</strong><small>DTI, nationwide</small></div>
-          <div className="tile3d"><span>Moved since last report</span><strong><b className="up">▲{summary?.rising ?? 0}</b> <b className="down">▼{summary?.falling ?? 0}</b></strong><small>Metro Manila markets</small></div>
+          <div className="tile3d"><span>Official prices tracked</span><strong>{summary?.items ?? "–"}</strong><small>Government prices across {summary?.categories ?? "–"} categories, from the DTI and DA</small></div>
+          <div className="tile3d"><span>Market prices updated</span><strong className="date">{longDate(dpi?.report_date ?? null)}</strong><small>Latest DA Daily Price Index: average prices in Metro Manila wet markets</small></div>
+          <div className="tile3d"><span>SRP bulletin in force</span><strong className="date">{longDate(srp?.report_date ?? null)}</strong><small>The DTI's suggested retail price list that stores should follow nationwide</small></div>
+          <div className="tile3d"><span>Moved since last report</span><strong><b className="up">▲{summary?.rising ?? 0}</b> <b className="down">▼{summary?.falling ?? 0}</b></strong><small>Items that went up ▲ or down ▼ in the latest market report</small></div>
         </div>
       )}
 
-      <CityPanel />
+      <CityPanel onBrowse={browseStore} />
 
       <section className="panel table-panel">
         <div className="controls">
@@ -251,11 +276,17 @@ export function PriceBoard({ compact }: { compact?: boolean }) {
             <option value="">All categories</option>
             {categories.map((c) => <option key={c}>{c}</option>)}
           </select>
+          <select value={area} aria-label="Location" onChange={(e) => { setArea(e.target.value); setMall(""); }}>
+            <option value="here">{city ? `Near me (${city.city})` : "Near me"}</option>
+            <option value="all">All locations</option>
+            {places.filter((p) => p.name !== city?.city).map((p) => <option key={p.name} value={p.name}>{p.name} ({p.prices})</option>)}
+          </select>
           <select value={mall} aria-label="Mall" onChange={(e) => setMall(e.target.value)}>
             <option value="">All malls</option>
-            {malls.map((m) => <option key={m.name} value={m.name}>{m.name}{m.prices ? ` (${m.prices})` : ""}</option>)}
+            {mallOptions.map((m) => <option key={m.name} value={m.name}>{m.name}{m.prices ? ` (${m.prices})` : ""}</option>)}
           </select>
         </div>
+        <p className="hint filter-help">Search a product, or pick a <b>location</b> then a <b>mall</b> to see only that mall's real prices. Price type chooses official standard prices or daily market prices.</p>
         <div className="aisles" role="group" aria-label="Browse by aisle">
           {aisles.map(({ name }) => (
             <button key={name} className={`chip${term === name ? " on" : ""}`} aria-pressed={term === name} onClick={() => setTerm(term === name ? "" : name)}>{name}</button>
@@ -266,7 +297,7 @@ export function PriceBoard({ compact }: { compact?: boolean }) {
         {rows && rows.length === 0 && <p className="muted pad">Official prices are being collected. Check back in a few minutes.</p>}
         {rows && rows.length > 0 && shown.length === 0 && brands.length === 0 && <p className="muted pad">Nothing matches. Try one word, like “rice”.</p>}
         {mall && mallPrices.length === 0 && (
-          <p className="note">No real {mall} prices{term.trim() ? ` for “${term.trim()}”` : ""} yet{city ? ` in ${city.city}` : ""}. Shopped there? Share your receipt from My List to be the first.</p>
+          <p className="note">No real {mall} prices{term.trim() ? ` for “${term.trim()}”` : ""} yet{areaCity ? ` in ${areaCity}` : ""}. Shopped there? Share your receipt from My List to be the first.</p>
         )}
         {mallPrices.length > 0 && (
           <div className="brand-results">
@@ -310,16 +341,27 @@ export function PriceBoard({ compact }: { compact?: boolean }) {
         {shown.length > 0 && (
           <>
             <p className="result-count">{shown.length} {shown.length === 1 ? "price" : "prices"} <LiveBadge /></p>
+            <details className="table-help">
+              <summary>How to read this table</summary>
+              <dl>
+                <div><dt>Item</dt><dd>The product and its size or grade. Tap a row for details and its price history.</dd></div>
+                <div><dt>Category</dt><dd>The product group it belongs to in the official report.</dd></div>
+                <div><dt>Price</dt><dd>The official price per unit. A shelf price can differ.</dd></div>
+                <div><dt>Change</dt><dd>The move since the last report. “Official SRP” prices stay fixed until a new bulletin.</dd></div>
+                <div><dt>Trend</dt><dd>The price over recent reports, shown as a small line.</dd></div>
+                <div><dt>Applies to</dt><dd>Where the price is valid, such as nationwide or Metro Manila.</dd></div>
+              </dl>
+            </details>
             <div className="table-wrap">
               <table className="prices">
                 <thead>
                   <tr>
                     <th aria-sort={aria("commodity")}><button onClick={() => toggle("commodity")}>Item{arrow("commodity")}</button></th>
-                    <th>Category</th>
+                    <th title="The product group in the official report">Category</th>
                     <th className="num" aria-sort={aria("price")}><button onClick={() => toggle("price")}>Price{arrow("price")}</button></th>
                     <th aria-sort={aria("change_pct")}><button onClick={() => toggle("change_pct")}>Change{arrow("change_pct")}</button></th>
-                    <th>Trend</th>
-                    <th>Applies to</th>
+                    <th title="The price over recent reports">Trend</th>
+                    <th title="Where this price is valid">Applies to</th>
                     <th><span className="sr">Add</span></th>
                   </tr>
                 </thead>

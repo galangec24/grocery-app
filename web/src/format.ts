@@ -24,5 +24,3 @@ export const STATUS_META: Record<PriceStatus, { label: string; icon: string }> =
   unknown: { label: "Unknown", icon: "?" },
 };
 
-export const mapUrl = (latitude: number, longitude: number) =>
-  `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`;

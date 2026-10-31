@@ -152,6 +152,15 @@ def malls(db: Database, city: str | None) -> list[dict]:
     return sorted(rows, key=lambda m: (-m["prices"], m["name"].lower()))
 
 
+def cities(db: Database) -> list[dict]:
+    """Places with real store prices, busiest first, for the location filter."""
+    counts: dict[str, int] = defaultdict(int)
+    for report in current(db):
+        if report["city"]:
+            counts[report["city"]] += 1
+    return [{"name": name, "prices": count} for name, count in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))]
+
+
 def mall_prices(db: Database, mall: str | None, query: str, city: str | None) -> dict:
     """Real store prices only, cheapest first. Rough guides never appear here."""
     reports = [r for r in current(db, city) if not mall or _mall(r).lower() == mall.lower()]
