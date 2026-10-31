@@ -16,6 +16,9 @@ const PATHS: Record<string, string> = {
   upload: "M12 16V4M7 9l5-5 5 5M4 20h16",
   ban: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM5.6 5.6l12.8 12.8",
   send: "M4 12l16-8-6 16-2.5-7z",
+  user: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0",
+  mail: "M3 6h18v12H3zM3 7l9 7 9-7",
+  lock: "M6 11h12v10H6zM8 11V7a4 4 0 0 1 8 0v4M12 15v2",
   plusCircle: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 8v8M8 12h8",
 };
 
