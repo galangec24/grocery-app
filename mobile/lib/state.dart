@@ -11,12 +11,13 @@ const _budgetKey = 'budget_v1';
 
 /// Shared app data. Device coordinates are used once and never kept.
 class AppState extends ChangeNotifier {
-  AppState({Api? api, DraftStore? drafts})
+  AppState({Api? api, DraftStore? drafts, this.liveUpdates = true})
       : api = api ?? Api(),
         drafts = drafts ?? DraftStore();
 
   final Api api;
   final DraftStore drafts;
+  final bool liveUpdates;
 
   CityInfo? city;
   double? latitude; // Held in memory only.
@@ -29,6 +30,7 @@ class AppState extends ChangeNotifier {
 
   /// Prices change on the server, so open screens check and reload by themselves.
   void startLiveUpdates() {
+    if (!liveUpdates) return;
     _liveTimer?.cancel();
     _liveTimer = Timer.periodic(const Duration(seconds: 30), (_) => checkForNewPrices());
   }

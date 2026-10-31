@@ -32,6 +32,7 @@ Map<String, dynamic> row(String id, String commodity, double price, String kind)
 var catalogEmpty = false;
 
 AppState fakeState() => AppState(
+      liveUpdates: false,
       api: Api(
         client: MockClient((request) async {
           if (request.url.path.endsWith('/market/catalog')) {
