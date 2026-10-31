@@ -177,9 +177,9 @@ export function AdminTools({ onChanged }: { onChanged: () => void }) {
         {agent?.coverage && (
           <div className="agent-stats">
             <div><strong>{agent.coverage.products.toLocaleString()}</strong><small>Products</small></div>
-            <div><strong>{agent.coverage.priced.toLocaleString()}</strong><small>With a price</small></div>
-            <div><strong>{agent.coverage.blank.toLocaleString()}</strong><small>No evidence yet</small></div>
-            <div><strong>{agent.coverage.products ? Math.round((agent.coverage.priced / agent.coverage.products) * 100) : 0}%</strong><small>Coverage</small></div>
+            <div><strong>{agent.coverage.priced.toLocaleString()}</strong><small>With real evidence</small></div>
+            <div><strong>{agent.coverage.blank.toLocaleString()}</strong><small>Rough guide only</small></div>
+            <div><strong>{agent.coverage.products ? Math.round((agent.coverage.priced / agent.coverage.products) * 100) : 0}%</strong><small>Real price coverage</small></div>
           </div>
         )}
         {agent && agent.runs.length === 0 && <p className="muted">The agent hasn't finished a run yet.</p>}

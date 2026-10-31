@@ -1,4 +1,4 @@
-"""Crowdsourced prices: accounts, proof photos, comparison, agreement and admin review."""
+﻿"""Crowdsourced prices: accounts, proof photos, comparison, agreement and admin review."""
 import io
 from datetime import timedelta
 
@@ -60,7 +60,7 @@ def test_shoppers_never_reach_administration(client, path):
 def test_proof_waits_for_review_and_is_not_published(client, admin):
     response = send(client, shopper(client))
     assert response.status_code == 201 and response.json()["status"] == "pending"
-    assert basket(client)["status"] == "needs_price"
+    assert basket(client)["status"] == "estimated"
     assert len(queue(client, admin)) == 1
 
 
@@ -92,7 +92,7 @@ def test_one_shopper_cannot_verify_their_own_price(client, admin):
     headers = shopper(client)
     send(client, headers)
     assert send(client, headers).json()["status"] == "pending"
-    assert basket(client)["status"] == "needs_price"
+    assert basket(client)["status"] == "estimated"
 
 
 def test_shoppers_who_disagree_stay_in_review(client, admin):
@@ -205,4 +205,42 @@ def test_mall_agent_needs_a_connector_and_permission(client, admin):
 
 def test_sm_markets_is_blocked_with_the_reason_on_record(client, admin):
     sm = next(s for s in client.get("/api/v1/admin/sources", headers=admin).json() if s["id"] == "sm-markets")
-    assert sm["can_run"] is False and "robots.txt" in sm["notes"]
+    assert sm["can_run"] is False and "permission" in sm["notes"]
+
+
+def approved_proofs(db, user_id, count, status="approved"):
+    for number in range(count):
+        db.proofs.insert_one({"_id": f"{status}{number}", "user_id": user_id, "item_key": f"item {number}", "store_name": "SM Cebu", "city": "Cebu City", "status": status, "price_centavos": 100, "created_at": utcnow()})
+
+
+def me(client, headers):
+    return client.get("/api/v1/users/me", headers=headers).json()["id"]
+
+
+def test_trusted_shopper_skips_the_queue_when_the_price_looks_right(client, db, admin, loaded):
+    headers = shopper(client)
+    approved_proofs(db, me(client, headers), proofs.TRUSTED_AFTER)
+    result = send(client, headers, name="Bear Brand", price=52).json()
+    assert result["status"] == "approved" and queue(client, admin) == []
+    assert db.shelf_reports.find_one()["origin"] == "Verified trusted shopper"
+
+
+def test_trusted_shopper_still_goes_to_review_when_the_price_looks_wrong(client, db, admin, loaded):
+    headers = shopper(client)
+    approved_proofs(db, me(client, headers), proofs.TRUSTED_AFTER)
+    assert send(client, headers, name="Bear Brand", price=500).json()["status"] == "pending"
+
+
+def test_too_many_rejections_lose_trust(client, db):
+    headers = shopper(client)
+    approved_proofs(db, me(client, headers), proofs.TRUSTED_AFTER)
+    approved_proofs(db, me(client, headers), 2, "rejected")
+    assert client.get("/api/v1/market/proofs/impact", headers=headers).json()["trusted"] is False
+
+
+def test_impact_counts_verified_work_and_needs_an_account(client, db):
+    assert client.get("/api/v1/market/proofs/impact").status_code == 401
+    headers = shopper(client)
+    approved_proofs(db, me(client, headers), 2)
+    result = client.get("/api/v1/market/proofs/impact", headers=headers).json()
+    assert (result["verified"], result["items"], result["stores"], result["to_trusted"]) == (2, 2, 1, 3)

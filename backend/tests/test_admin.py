@@ -267,7 +267,7 @@ def test_admin_catalog_item_becomes_searchable_and_removable(client, admin, supe
     created = client.post(url, json=item, headers=admin).json()
     assert "Local Brand Tuyo" in {c["name"] for c in client.get("/api/v1/market/catalog").json()}
     line = client.post("/api/v1/market/basket", json={"items": [{"query": "local brand tuyo"}]}).json()["lines"][0]
-    assert line["status"] == "needs_price"
+    assert line["status"] == "estimated" and "Rough guide" in line["report"]["origin"]
     assert client.delete(f"{url}/{created['id']}", headers=admin).status_code == 200
     assert "Local Brand Tuyo" not in {c["name"] for c in client.get("/api/v1/market/catalog").json()}
 

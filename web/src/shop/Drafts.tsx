@@ -281,7 +281,7 @@ function ListEditor({ draft, onChange, header, footer }: {
                     {line?.status === "custom" ? item.query : line?.label ?? item.query}
                     {line?.selected && <small>{peso(line.selected.price)} per {line.selected.unit}</small>}
                     {line?.status === "needs_price" && <small>No price yet. Be the first to enter it.</small>}
-                    {line?.status === "estimated" && line.report && <small className="estimated">≈ ₱{line.report.price.toFixed(2)}. {line.report.origin}. Enter the shelf price if you know it.</small>}
+                    {line?.status === "estimated" && line.report && <small className="estimated">≈ {line.report.low ? `${peso(line.report.low)} to ${peso(line.report.high ?? line.report.price)}` : peso(line.report.price)}. {line.report.origin}. Enter the shelf price if you know it.</small>}
                     {line?.status === "reported" && line.report && <small className="reported">₱{line.report.price.toFixed(2)} at {line.report.store_name}{line.report.elsewhere && line.report.city ? ` in ${line.report.city}` : ""}. {line.report.origin}{line.report.reported_at ? `, ${new Date(line.report.reported_at).toLocaleDateString("en-PH", { dateStyle: "medium" })}` : ""}</small>}
                     {line?.status === "no_match" && <small>Not in our lists. Enter a price to count it.</small>}
                     {line?.status === "matched" && line.candidates.length > 1 && (

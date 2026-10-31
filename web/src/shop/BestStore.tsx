@@ -105,6 +105,7 @@ export function BestStore({ items, total, official }: { items: string[]; total: 
       <p className="eyebrow">Cheapest store for your list</p>
       <h3>{best.store_name}</h3>
       <p className="best-total">{peso(best.total)}</p>
+      {data!.saving > 0 && <p className="saving">You save up to {peso(data!.saving)} compared with other stores</p>}
       <p className="best-meta">
         {best.items_found} of {data!.items_total} items at this store
         {best.distance_km !== null && ` · ${best.distance_km.toFixed(1)} km away`}

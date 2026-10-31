@@ -345,7 +345,7 @@ class _ItemRow extends StatelessWidget {
     final note = switch (current?.status) {
       'matched' => '${peso(current!.unitPrice)} per ${current.selected!.unit}',
       'reported' => 'Reported at ${current!.reportedStore}',
-      'estimated' => '≈ ${peso(current!.unitPrice)}, estimated from similar official items',
+      'estimated' => '≈ ${peso(current!.unitPrice)}, an estimate. Enter the shelf price if you know it.',
       'needs_price' => 'No price yet. Be the first to enter it.',
       'no_match' => 'Not in our lists. Enter a price to count it.',
       'custom' => 'Your shelf price',

@@ -33,7 +33,7 @@ SOURCES = [
      "Terms allow personal, non-commercial use only. Needs written permission from Baptiste Group."),
     ("manual", "Admin price updates", "manual", "granted", True, "", "Prices entered by administrators."),
     ("sm-markets", "SM Markets", "retailer_website", "pending", False, "https://smmarkets.ph/robots.txt",
-     "robots.txt disallows catalog, product and search pages. Needs a partnership or a data feed."),
+     "Product pages are public, but prices vary by branch and use needs SM's permission. Needs a partnership or a data feed."),
     ("waltermart", "WalterMart", "retailer_website", "pending", False, "", "Needs a partnership or written permission."),
     ("metromart", "MetroMart", "retailer_website", "pending", False, "", "Needs a partnership or written permission."),
 ]
@@ -46,6 +46,8 @@ def seed(db: Database) -> None:
                 "_id": source_id, "name": name, "kind": kind, "permission": permission, "enabled": enabled,
                 "terms_url": terms_url, "notes": notes, "last_import_at": None, "created_at": utcnow(),
             })
+        elif permission == "pending":
+            db.price_sources.update_one({"_id": source_id, "permission": "pending"}, {"$set": {"notes": notes}})
 
 
 def can_run(db: Database, source_id: str) -> bool:
@@ -195,7 +197,7 @@ def feed_reports(db: Database, city: str | None) -> list[dict]:
         store = f'{row["retailer"]} {row["branch"]}' if row["branch"] else row["retailer"]
         name = f'{row["product"]} {row["size"]}'
         reports.append({
-            "item_key": " ".join(cmp.tokenize(name)), "item_name": name, "store_name": store,
+            "item_key": " ".join(cmp.tokenize(name)), "item_name": name, "store_name": store, "retailer": row["retailer"],
             "city": row.get("city") or "", "latitude": row["latitude"], "longitude": row["longitude"],
             "price_centavos": row["price_centavos"], "created_at": row["verified_at"], "status": "visible",
             "origin": "Branch price" if row["scope"] == "branch" else f'{row["retailer"]} chain price, branches may differ',

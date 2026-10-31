@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { api, CatalogItem, MarketSummary, PriceRow, query, Suggestion } from "../api";
+import { api, CatalogItem, Mall, MallPrice, MarketSummary, PriceRow, query, Suggestion } from "../api";
 import { addItems, newDraft, readDrafts, saveDraft } from "../drafts";
-import { longDate, mapUrl, peso } from "../format";
+import { longDate, mapUrl, peso, timeAgo } from "../format";
 import { Icon, IconButton } from "../icons";
 import { LiveBadge, useLive } from "../live";
 import { useLocation } from "../location";
@@ -115,6 +115,9 @@ export function PriceBoard({ compact }: { compact?: boolean }) {
   const [catalog, setCatalog] = useState<CatalogItem[]>([]);
   const [matches, setMatches] = useState<Set<string> | null>(null);
   const [aisles, setAisles] = useState<{ name: string; count: number }[]>([]);
+  const [malls, setMalls] = useState<Mall[]>([]);
+  const [mall, setMall] = useState("");
+  const [mallPrices, setMallPrices] = useState<MallPrice[]>([]);
   const island = city?.island;
   const { version } = useLive();
 
@@ -146,6 +149,22 @@ export function PriceBoard({ compact }: { compact?: boolean }) {
     }, 250);
     return () => { live = false; clearTimeout(timer); };
   }, [term, island]);
+
+  useEffect(() => {
+    api<Mall[]>(`/market/malls${query({ city: city?.city })}`).then(setMalls).catch(() => setMalls([]));
+  }, [city?.city, version]);
+
+  useEffect(() => {
+    const words = term.trim();
+    if (!mall && !words) { setMallPrices([]); return; }
+    let live = true;
+    const timer = setTimeout(() => {
+      api<{ results: MallPrice[] }>(`/market/mall-prices${query({ mall, q: words, city: city?.city })}`)
+        .then((found) => { if (live) setMallPrices(found.results); })
+        .catch(() => { if (live) setMallPrices([]); });
+    }, 250);
+    return () => { live = false; clearTimeout(timer); };
+  }, [mall, term, city?.city, version]);
 
   const categories = useMemo(
     () => [...new Set((rows ?? []).filter((r) => !source || r.source === source).map((r) => r.category))].sort(),
@@ -187,8 +206,15 @@ export function PriceBoard({ compact }: { compact?: boolean }) {
     const found = catalog.find((c) => c.id === item.id);
     setSubject({ kind: "brand", item: found ?? {
       id: item.id, name: item.name, brand: "", category: item.category, size: item.size, variant: "",
-      barcode: null, image_url: item.image_url, source: "", keywords: "", auto_price: null,
+      barcode: null, image_url: item.image_url, source: "", keywords: "",
+      auto_price: item.price === null ? null : { price: item.price, kind: "estimate", label: item.price_label ?? "Estimate" },
     } });
+  }
+
+  function addMallPrice(price: MallPrice) {
+    const base = readDrafts()[0] ?? newDraft("My list");
+    saveDraft(addItems(base, [{ query: price.item_name, quantity: 1 }]));
+    setAdded(`${price.store_name}${price.item_name}`);
   }
 
   function addBrand(item: CatalogItem) {
@@ -225,6 +251,10 @@ export function PriceBoard({ compact }: { compact?: boolean }) {
             <option value="">All categories</option>
             {categories.map((c) => <option key={c}>{c}</option>)}
           </select>
+          <select value={mall} aria-label="Mall" onChange={(e) => setMall(e.target.value)}>
+            <option value="">All malls</option>
+            {malls.map((m) => <option key={m.name} value={m.name}>{m.name}{m.prices ? ` (${m.prices})` : ""}</option>)}
+          </select>
         </div>
         <div className="aisles" role="group" aria-label="Browse by aisle">
           {aisles.map(({ name }) => (
@@ -235,10 +265,33 @@ export function PriceBoard({ compact }: { compact?: boolean }) {
         {!rows && !error && <p className="muted pad">Loading official prices…</p>}
         {rows && rows.length === 0 && <p className="muted pad">Official prices are being collected. Check back in a few minutes.</p>}
         {rows && rows.length > 0 && shown.length === 0 && brands.length === 0 && <p className="muted pad">Nothing matches. Try one word, like “rice”.</p>}
+        {mall && mallPrices.length === 0 && (
+          <p className="note">No real {mall} prices{term.trim() ? ` for “${term.trim()}”` : ""} yet{city ? ` in ${city.city}` : ""}. Shopped there? Share your receipt from My List to be the first.</p>
+        )}
+        {mallPrices.length > 0 && (
+          <div className="brand-results">
+            <h3>{mall ? `Prices at ${mall}` : "Prices at malls"}</h3>
+            <p className="hint">Real prices from stores and shoppers, with the date they were checked.</p>
+            <div className="brand-grid">
+              {mallPrices.map((price) => {
+                const key = `${price.store_name}${price.item_name}`;
+                return (
+                  <article className="brand-card" key={key}>
+                    <ProductImage category={price.item_name} large />
+                    <strong>{price.item_name}</strong>
+                    <small>{price.store_name}{price.city ? `, ${price.city}` : ""}</small>
+                    <b className="brand-price">{peso(price.price)}<small>{price.origin}, {timeAgo(price.reported_at)}</small></b>
+                    <IconButton icon={added === key ? "check" : "plus"} label={added === key ? "Added" : "Add to draft"} onClick={() => addMallPrice(price)} disabled={added === key} />
+                  </article>
+                );
+              })}
+            </div>
+          </div>
+        )}
         {brands.length > 0 && (
           <div className="brand-results">
             <h3>Found in stores</h3>
-            <p className="hint">Tap a product for its price history. Add it to your list to see prices near you.</p>
+            <p className="hint">≈ marks an estimate, not a store price. Tap a product for details.</p>
             <div className="brand-grid">
               {brands.slice(0, 24).map((item) => (
                 <article className="brand-card clickable" key={item.id} tabIndex={0}
@@ -247,7 +300,7 @@ export function PriceBoard({ compact }: { compact?: boolean }) {
                   <ProductImage src={item.image_url} category={`${item.category} ${item.name}`} large />
                   <strong>{item.name}</strong>
                   <small>{item.variant && <b className="size-tag">{item.variant}</b>} {item.size} · {item.category}</small>
-                  {item.auto_price && <b className="brand-price">{item.auto_price.kind === "estimate" ? "≈ " : ""}{peso(item.auto_price.price)}<small>{item.auto_price.label}</small></b>}
+                  {item.auto_price && <b className="brand-price">{item.auto_price.kind === "store" ? "" : "≈ "}{item.auto_price.low ? `${peso(item.auto_price.low)} to ${peso(item.auto_price.high ?? item.auto_price.price)}` : peso(item.auto_price.price)}<small>{item.auto_price.label}</small></b>}
                   <IconButton icon={added === item.id ? "check" : "plus"} label={added === item.id ? "Added" : "Add to draft"} onClick={(e) => { e.stopPropagation(); addBrand(item); }} disabled={added === item.id} />
                 </article>
               ))}

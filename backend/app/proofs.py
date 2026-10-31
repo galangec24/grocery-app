@@ -19,6 +19,8 @@ MAX_PHOTO_BYTES = 2 * 1024 * 1024
 PHOTO_RETENTION_DAYS = 30
 AGREEMENT_TOLERANCE = 0.05
 CONSISTENT_RANGE = 0.25
+TRUSTED_AFTER = 5
+MAX_REJECTED_SHARE = 0.2
 SIGNATURES = {b"\xff\xd8\xff": "image/jpeg", b"\x89PNG\r\n\x1a\n": "image/png"}
 
 
@@ -71,6 +73,19 @@ def publish(db: Database, proof: dict, centavos: int, origin: str) -> None:
     live.bump(db)
 
 
+def impact(db: Database, user_id: str) -> dict:
+    """What a shopper's sharing has added, and whether their prices can skip the queue."""
+    approved = list(db.proofs.find({"user_id": user_id, "status": "approved"}, {"store_name": 1, "city": 1, "item_key": 1}))
+    rejected = db.proofs.count_documents({"user_id": user_id, "status": "rejected"})
+    trusted = len(approved) >= TRUSTED_AFTER and rejected <= len(approved) * MAX_REJECTED_SHARE
+    return {
+        "verified": len(approved), "items": len({p["item_key"] for p in approved}),
+        "stores": len({p["store_name"] for p in approved}), "cities": len({p["city"] for p in approved}),
+        "pending": db.proofs.count_documents({"user_id": user_id, "status": "pending"}), "rejected": rejected,
+        "trusted": trusted, "to_trusted": max(0, TRUSTED_AFTER - len(approved)),
+    }
+
+
 def submit(db: Database, user: dict, name: str, store_name: str, latitude: float, longitude: float,
            city: str, price: float, photo: bytes) -> dict:
     if len(photo) > MAX_PHOTO_BYTES:
@@ -92,7 +107,13 @@ def submit(db: Database, user: dict, name: str, store_name: str, latitude: float
         doc["status"] = "approved"
         doc["decided_by"] = "agreement"
         doc["decided_at"] = utcnow()
+    elif impact(db, user["_id"])["trusted"] and doc["comparison"]["verdict"] == "consistent":
+        doc["status"] = "approved"  # Anything unusual still goes to a person.
+        doc["decided_by"] = "trusted shopper"
+        doc["decided_at"] = utcnow()
     db.proofs.insert_one(doc)
+    if doc.get("decided_by") == "trusted shopper":
+        publish(db, doc, centavos, "Verified trusted shopper")
     if match:
         if match["status"] == "pending":
             db.proofs.update_one({"_id": match["_id"]}, {"$set": {"status": "approved", "decided_by": "agreement", "decided_at": utcnow()}})

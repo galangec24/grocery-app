@@ -89,6 +89,19 @@ class CityInfo {
   final List<CityStore> stores;
 }
 
+class MallPrice {
+  MallPrice.fromJson(Map<String, dynamic> json)
+      : itemName = json['item_name'] as String,
+        storeName = json['store_name'] as String,
+        origin = json['origin'] as String,
+        price = (json['price'] as num).toDouble();
+
+  final String itemName;
+  final String storeName;
+  final String origin;
+  final double price;
+}
+
 class CatalogItem {
   CatalogItem.fromJson(Map<String, dynamic> json)
       : id = json['id'] as String,
@@ -96,7 +109,9 @@ class CatalogItem {
         category = json['category'] as String,
         size = json['size'] as String,
         variant = (json['variant'] as String?) ?? '',
-        keywords = json['keywords'] as String;
+        keywords = json['keywords'] as String,
+        price = ((json['auto_price'] as Map<String, dynamic>?)?['price'] as num?)?.toDouble(),
+        isStorePrice = (json['auto_price'] as Map<String, dynamic>?)?['kind'] == 'store';
 
   final String id;
   final String name;
@@ -104,6 +119,8 @@ class CatalogItem {
   final String size;
   final String variant;
   final String keywords;
+  final double? price;
+  final bool isStorePrice;
 }
 
 class Suggestion {
@@ -306,6 +323,20 @@ class Api {
   Future<List<CatalogItem>> catalog(String query) async {
     final data = await _send(() => _client.get(_uri('/market/catalog', {'q': query, 'limit': '24'})));
     return (data as List).map((c) => CatalogItem.fromJson(c as Map<String, dynamic>)).toList();
+  }
+
+  Future<List<String>> malls(String? city) async {
+    final data = await _send(() => _client.get(_uri('/market/malls', {if (city != null) 'city': city})));
+    return (data as List).map((m) => m['name'] as String).toList();
+  }
+
+  Future<List<MallPrice>> mallPrices(String mall, String query, String? city) async {
+    final data = await _send(() => _client.get(_uri('/market/mall-prices', {
+          'mall': mall,
+          if (query.isNotEmpty) 'q': query,
+          if (city != null) 'city': city,
+        })));
+    return (data['results'] as List).map((p) => MallPrice.fromJson(p as Map<String, dynamic>)).toList();
   }
 
   Future<CityInfo> resolveLocation(double latitude, double longitude) async {

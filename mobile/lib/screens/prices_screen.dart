@@ -26,6 +26,9 @@ class _PricesScreenState extends State<PricesScreen> {
   int _loadedVersion = 0;
   bool _loaded = false;
   String _source = 'all';
+  List<String> _malls = const [];
+  String? _mall;
+  List<MallPrice> _mallPrices = const [];
 
   @override
   void didChangeDependencies() {
@@ -53,9 +56,31 @@ class _PricesScreenState extends State<PricesScreen> {
     setState(() => _error = null);
     try {
       final rows = await state.api.prices(island: state.city?.island);
-      if (mounted) setState(() => _rows = rows);
+      final malls = await state.api.malls(state.city?.city);
+      if (mounted) {
+        setState(() {
+          _rows = rows;
+          _malls = malls;
+        });
+      }
+      await _loadMall();
     } on ApiException catch (error) {
       if (mounted) setState(() => _error = error.message);
+    }
+  }
+
+  Future<void> _loadMall() async {
+    final mall = _mall;
+    if (mall == null) {
+      setState(() => _mallPrices = const []);
+      return;
+    }
+    final state = AppScope.of(context);
+    try {
+      final found = await state.api.mallPrices(mall, _search.text.trim(), state.city?.city);
+      if (mounted && _mall == mall) setState(() => _mallPrices = found);
+    } on ApiException {
+      if (mounted) setState(() => _mallPrices = const []);
     }
   }
 
@@ -74,10 +99,12 @@ class _PricesScreenState extends State<PricesScreen> {
     _catalogTimer?.cancel();
     if (text.trim().isEmpty) {
       setState(() => _catalog = const []);
+      _loadMall();
       return;
     }
     _catalogTimer = Timer(const Duration(milliseconds: 250), () async {
       final api = AppScope.of(context).api;
+      _loadMall();
       try {
         final found = await api.catalog(text.trim());
         if (mounted && _search.text == text) setState(() => _catalog = found);
@@ -148,19 +175,55 @@ class _PricesScreenState extends State<PricesScreen> {
             ),
           ),
         ),
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+            child: DropdownButtonFormField<String>(
+              value: _mall,
+              isExpanded: true,
+              decoration: const InputDecoration(labelText: 'Mall', isDense: true, border: OutlineInputBorder()),
+              items: [
+                const DropdownMenuItem(value: null, child: Text('All malls')),
+                for (final mall in _malls) DropdownMenuItem(value: mall, child: Text(mall)),
+              ],
+              onChanged: (value) {
+                setState(() => _mall = value);
+                _loadMall();
+              },
+            ),
+          ),
+        ),
+        if (_mall != null)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('Prices at $_mall', style: Theme.of(context).textTheme.titleMedium),
+                if (_mallPrices.isEmpty) const Text('No real prices here yet. Shopped there? Share your receipt from your list.'),
+                for (final price in _mallPrices)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(price.itemName),
+                    subtitle: Text('${price.storeName} · ${price.origin}'),
+                    trailing: Text(peso(price.price)),
+                  ),
+              ]),
+            ),
+          ),
         if (brands.isNotEmpty)
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text('Found in stores', style: Theme.of(context).textTheme.titleMedium),
-                const Text('Add one to your list to see prices near you.'),
+                const Text('≈ marks an estimate, not a store price. Add one to your list.'),
                 const SizedBox(height: 6),
                 Wrap(spacing: 8, runSpacing: 8, children: [
                   for (final item in brands)
                     ActionChip(
                       avatar: const Icon(Icons.add, size: 18),
-                      label: Text('${item.name} ${item.variant.isEmpty ? '' : '${item.variant} '}${item.size}'),
+                      label: Text('${item.name} ${item.variant.isEmpty ? '' : '${item.variant} '}${item.size}'
+                          '${item.price == null ? '' : ' · ${item.isStorePrice ? '' : '≈ '}${peso(item.price!)}'}'),
                       onPressed: () => _addBrand(item),
                     ),
                 ]),

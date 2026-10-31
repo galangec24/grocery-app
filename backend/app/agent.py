@@ -4,8 +4,8 @@ It runs by itself inside the backend, and on demand from the dashboard or with:
 
     python -m app.agent
 
-Every price it saves is traceable to a source. A product with no evidence stays blank,
-and the coverage report says how many, because a guessed price is worse than none.
+Every price it saves is traceable to a source. A product with no evidence stays blank
+here and the coverage report says how many; shoppers see a labelled rough guide instead.
 """
 import ipaddress
 import logging

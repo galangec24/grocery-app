@@ -41,7 +41,7 @@ export function Receipt({ draft, data, inCart }: { draft: Draft; data: BasketRes
           {left !== null && <div className={`receipt-sum${left < 0 ? " over" : ""}`}><span>{left < 0 ? "OVER BY" : "LEFT"}</span><span>{peso(Math.abs(left))}</span></div>}
           <div className="rule" />
           <p className="receipt-note">{data.items_matched} of {data.lines.length} items counted{waiting.length ? ", others need a price" : ""}</p>
-          <p className="receipt-note">* Your shelf price. † Reported store price. ≈ Estimate from similar items. Others are official. All may differ at checkout.</p>
+          <p className="receipt-note">* Your shelf price. † Reported store price. ≈ Estimate, not a store price. Others are official. All may differ at checkout.</p>
         </>
       )}
     </div>

@@ -13,12 +13,19 @@ from pymongo.database import Database
 
 from . import comparison as cmp
 from . import ingestion, live
+from . import search as meaning
 from .db import new_id, utcnow
 
 MAX_AGE_DAYS = 30
 OPEN_PRICE_MAX_AGE_DAYS = 365
 OUTLIER_FACTOR = 3
 MIN_REPORTS_TO_JUDGE = 3
+CHAINS = [
+    "SM", "Savemore", "Robinsons", "Puregold", "WalterMart", "Gaisano", "Metro", "S&R", "Landers", "Shopwise", "Rustan's",
+    "Ever", "NCCC", "Prince", "Alfamart", "7-Eleven", "MetroMart",
+]
+MALL_KINDS = ("retailer_api", "retailer_feed", "retailer_website")
+MALL_RESULTS = 60
 
 
 def item_key(name: str) -> str:
@@ -113,9 +120,47 @@ def best_stores(db: Database, queries: list[str], city: str | None, latitude, lo
             "distance_km": distance, "lines": store["lines"],
         })
     rows.sort(key=lambda s: (-s["items_found"], s["total"], s["distance_km"] or 0))
+    rivals = [s for s in rows[1:] if rows[0]["items_found"] == s["items_found"]]
     return {
         "best": rows[0] if rows else None, "stores": rows[:10], "items_total": len(queries),
+        # Only stores with the same items compare fairly.
+        "saving": round(max(s["total"] for s in rivals) - rows[0]["total"], 2) if rivals else 0,
         "items_priced": len(priced), "generated_at": cmp.iso(utcnow()),
+    }
+
+
+def chain_of(store_name: str) -> str:
+    """Groups branches, so "SM Hypermarket Cebu" and "SM Supermarket" are both SM."""
+    lowered = store_name.lower()
+    return next((c for c in CHAINS if lowered == c.lower() or lowered.startswith(f"{c.lower()} ")), store_name)
+
+
+def _mall(report: dict) -> str:
+    return chain_of(report.get("retailer") or report["store_name"])
+
+
+def malls(db: Database, city: str | None) -> list[dict]:
+    """Every mall with prices near the shopper, plus connected malls still waiting for data."""
+    found: dict[str, dict] = {}
+    for source in db.price_sources.find({"kind": {"$in": list(MALL_KINDS)}}):
+        found[chain_of(source["name"])] = {"name": chain_of(source["name"]), "prices": 0, "stores": set()}
+    for report in current(db, city):
+        mall = found.setdefault(_mall(report), {"name": _mall(report), "prices": 0, "stores": set()})
+        mall["prices"] += 1
+        mall["stores"].add(report["store_name"])
+    rows = [{**m, "stores": len(m["stores"])} for m in found.values()]
+    return sorted(rows, key=lambda m: (-m["prices"], m["name"].lower()))
+
+
+def mall_prices(db: Database, mall: str | None, query: str, city: str | None) -> dict:
+    """Real store prices only, cheapest first. Rough guides never appear here."""
+    reports = [r for r in current(db, city) if not mall or _mall(r).lower() == mall.lower()]
+    groups = meaning.expand(db, query)
+    found = [r for r in reports if meaning.fits(groups, r["item_name"].lower())]
+    found.sort(key=lambda r: (-meaning.score(groups, r["item_name"]), r["price_centavos"]))
+    return {
+        "mall": mall, "count": len(found), "generated_at": cmp.iso(utcnow()),
+        "results": [{**report_json(r), "mall": _mall(r)} for r in found[:MALL_RESULTS]],
     }
 
 

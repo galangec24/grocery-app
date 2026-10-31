@@ -6,6 +6,17 @@ import { longDate, peso } from "../format";
 
 export type ModalSubject = { kind: "price"; row: PriceRow } | { kind: "brand"; item: CatalogItem };
 
+function GuidePrice({ item }: { item: CatalogItem }) {
+  const guess = item.auto_price;
+  if (!guess) return <p className="note">No price yet. Add it to your list and enter the shelf price.</p>;
+  return (
+    <>
+      <p className="modal-price">≈ {guess.low ? `${peso(guess.low)} to ${peso(guess.high ?? guess.price)}` : peso(guess.price)}</p>
+      <p className="note">{guess.label}. Seen the real price? Add it to your list and share it to help other shoppers.</p>
+    </>
+  );
+}
+
 function BrandPrices({ item }: { item: CatalogItem }) {
   const [points, setPoints] = useState<PricePoint[] | null>(null);
 
@@ -15,9 +26,7 @@ function BrandPrices({ item }: { item: CatalogItem }) {
   }, [item.id]);
 
   if (points === null) return <p className="muted">Checking for prices…</p>;
-  if (points.length === 0) {
-    return <p className="note">No price has been reported for this product yet. Add it to your list, enter the shelf price and share it to help other shoppers.</p>;
-  }
+  if (points.length === 0) return <GuidePrice item={item} />;
   const latest = points[points.length - 1];
   return (
     <>

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAccount } from "../account";
-import { api } from "../api";
+import { api, Impact } from "../api";
 import { useBudget } from "../budget";
 import { peso } from "../format";
 import { IconButton } from "../icons";
@@ -19,9 +19,11 @@ export function Reports() {
   const [confirming, setConfirming] = useState<string | null>(null);
   const { user } = useAccount();
   const [shared, setShared] = useState<{ id: string; item_name: string; store_name: string; price: number; status: string; reason: string | null }[]>([]);
+  const [impact, setImpact] = useState<Impact | null>(null);
   useEffect(() => setSpent(0), [setSpent]);
   useEffect(() => {
-    if (!user) { setShared([]); return; }
+    if (!user) { setShared([]); setImpact(null); return; }
+    api<Impact>("/market/proofs/impact", {}, "shopper").then(setImpact).catch(() => setImpact(null));
     api<typeof shared>("/market/proofs/mine", {}, "shopper").then(setShared).catch(() => setShared([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
@@ -88,6 +90,12 @@ export function Reports() {
       {shared.length > 0 && (
         <section className="panel">
           <h2>Prices you shared</h2>
+          {impact && (
+            <p className="impact">
+              {impact.trusted ? <b>★ Trusted Shopper</b> : <b>{impact.to_trusted} more verified {impact.to_trusted === 1 ? "price" : "prices"} to Trusted Shopper</b>}
+              <span>{impact.verified} verified · {impact.items} {impact.items === 1 ? "item" : "items"} · {impact.stores} {impact.stores === 1 ? "store" : "stores"} · {impact.cities} {impact.cities === 1 ? "city" : "cities"}</span>
+            </p>
+          )}
           <ul className="plain">
             {shared.map((proof) => (
               <li className="purchase-row" key={proof.id}>

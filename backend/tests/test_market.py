@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from app import market, search
+from app import market, search, estimates
 from app.bootstrap import ensure_admin, purge_sample_data
 from app.db import utcnow
 from app.sources import da_dpi, dti_srp, open_data
@@ -221,10 +221,17 @@ def test_catalog_prices_always_name_their_evidence(client):
         assert item["auto_price"] is None or (item["auto_price"]["label"] and item["auto_price"]["kind"])
 
 
-def test_catalog_item_waits_for_a_shelf_price(loaded, client):
-    data = client.post("/api/v1/market/basket", json={"items": [{"query": "piatos"}]}).json()
-    assert data["lines"][0]["status"] == "needs_price" and data["total"] == 0
-    assert data["items_need_price"] == 1 and "Piatos" in data["lines"][0]["label"]
+def test_catalog_item_without_evidence_gets_a_labelled_guide(loaded, client):
+    line = client.post("/api/v1/market/basket", json={"items": [{"query": "piatos"}]}).json()["lines"][0]
+    assert line["status"] == "estimated" and line["report"]["origin"] == estimates.LABEL
+    assert line["report"]["low"] < line["unit_price"] < line["report"]["high"]
+    assert "Piatos" in line["label"]
+
+
+def test_a_store_wide_label_does_not_decide_the_guide():
+    plain = estimates.guide("Mystery Face Thing", "Beauty & Fragrance", "beauty & fragrance")
+    perfume = estimates.guide("Bench Eau de Toilette 75ml", "Beauty & Fragrance", "beauty & fragrance")
+    assert plain["price"] < perfume["price"]
 
 
 def test_official_price_wins_over_the_catalog(loaded, client):
@@ -481,9 +488,25 @@ def test_price_fills_in_from_similar_official_items(loaded, client):
     assert client.post("/api/v1/market/basket", json={"items": [{"query": "mega sardines 155g"}]}).json()["total"] == line["unit_price"]
 
 
-def test_no_estimate_without_comparable_official_items(loaded, client):
-    line = client.post("/api/v1/market/basket", json={"items": [{"query": "piatos cheese"}]}).json()["lines"][0]
-    assert line["status"] == "needs_price" and line["line_total"] == 0
+def test_unknown_item_stays_out_of_the_total(loaded, client):
+    line = client.post("/api/v1/market/basket", json={"items": [{"query": "qwxzv"}]}).json()["lines"][0]
+    assert line["status"] == "no_match" and line["line_total"] == 0
+
+
+def test_every_catalog_product_shows_a_price(client):
+    assert all(item["auto_price"]["price"] > 0 for item in client.get("/api/v1/market/catalog").json())
+
+
+def test_guides_scale_with_size_and_cover_unknown_products():
+    small, large = estimates.guide("Piatos Cheese 40g"), estimates.guide("Piatos Cheese 85g")
+    assert small["price"] < large["price"] and small["low"] < small["price"] < small["high"]
+    assert estimates.guide("Mystery Lip Thing", "Open Beauty Facts", "beauty")["price"] > 0
+    assert estimates.guide("Mystery Thing") is None
+
+
+def test_guides_never_rank_stores_or_appear_as_mall_prices(client):
+    assert client.post("/api/v1/market/best-stores", json={"items": ["piatos cheese 85g"]}).json()["best"] is None
+    assert client.get("/api/v1/market/mall-prices", params={"q": "piatos"}).json()["count"] == 0
 
 
 def test_price_from_another_city_is_used_and_labelled(client):

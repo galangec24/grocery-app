@@ -97,6 +97,21 @@ def market_suggest(
     return market.suggestions(db, q, island, city, limit)
 
 
+@router.get("/market/malls", dependencies=[Depends(limit_search)])
+def market_malls(city: str | None = Query(None, max_length=80), db: Database = Depends(get_db)):
+    return community.malls(db, city)
+
+
+@router.get("/market/mall-prices", dependencies=[Depends(limit_search)])
+def market_mall_prices(
+    mall: str | None = Query(None, max_length=120),
+    q: str = Query("", max_length=120),
+    city: str | None = Query(None, max_length=80),
+    db: Database = Depends(get_db),
+):
+    return community.mall_prices(db, mall, q, city)
+
+
 @router.get("/market/aisles")
 def market_aisles(db: Database = Depends(get_db)):
     return market.aisles(db)
@@ -188,6 +203,11 @@ async def submit_proof(
 def my_proofs(user: dict = Depends(current_user), db: Database = Depends(get_db)):
     rows = db.proofs.find({"user_id": user["_id"]}, {"photo": 0}).sort("created_at", -1).limit(50)
     return [proofs.proof_json(db, p, for_admin=False) for p in rows]
+
+
+@router.get("/market/proofs/impact")
+def my_impact(user: dict = Depends(current_user), db: Database = Depends(get_db)):
+    return proofs.impact(db, user["_id"])
 
 
 class BestStoreRequest(BaseModel):

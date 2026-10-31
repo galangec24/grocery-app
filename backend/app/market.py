@@ -13,7 +13,7 @@ from datetime import timedelta
 import httpx
 from pymongo.database import Database
 
-from . import community, ingestion
+from . import community, estimates, ingestion
 from . import search as meaning
 from . import comparison as cmp
 from .db import client, new_id, supports_transactions, utcnow
@@ -243,11 +243,12 @@ def suggestions(db: Database, query: str, island: str | None, city: str | None, 
         name = f'{product["name"]} {product["size"]}'.strip()
         seen = community.lowest_by_query(reports, name)
         guess = None if seen else meaning.estimate(rows, name, product["name"])
+        rough = None if seen or guess else estimates.guide(name, product["category"], product["keywords"])
         results.append({
             "id": product["_id"], "kind": "product", "name": product["name"], "size": product["size"],
             "category": product["category"], "image_url": product.get("image_url"), "unit": None, "price_id": None,
-            "price": cmp.money(seen["price_centavos"]) if seen else guess["price"] if guess else None,
-            "price_label": f'{seen["store_name"]}' if seen else "Estimate from similar items" if guess else None,
+            "price": cmp.money(seen["price_centavos"]) if seen else guess["price"] if guess else rough["price"],
+            "price_label": f'{seen["store_name"]}' if seen else "Estimate from similar items" if guess else rough["label"],
         })
     return results
 
@@ -294,12 +295,18 @@ def _rank(row: dict, tokens: list[str]) -> tuple:
     return (not all(t in name for t in tokens), row["kind"] != "srp" and len(name) > 30, len(name), row["price"])
 
 
+def rough_guide(query: str, brand: list[dict]) -> dict | None:
+    if brand:
+        return estimates.guide(f'{brand[0]["name"]} {brand[0]["size"]}', brand[0]["category"], brand[0]["keywords"])
+    return estimates.guide(query)
+
+
 def basket(db: Database, rows: list[dict], items: list[dict], find_products, reports: list[dict], elsewhere: list[dict]) -> dict:
     """Cost a list. Official prices first, then the shopper's own shelf prices.
 
     Prices fill in by themselves from the best evidence available: an official price, a
-    store price nearby, a store price elsewhere, then an estimate from similar official
-    items. Each is labelled. An item with no evidence at all stays out of the total.
+    store price nearby, a store price elsewhere, an estimate from similar official items,
+    then a rough guide. Each is labelled. An item we can't identify stays out of the total.
     """
     by_id = {r["id"]: r for r in rows}
     lines, total = [], 0
@@ -327,8 +334,10 @@ def basket(db: Database, rows: list[dict], items: list[dict], find_products, rep
             status, unit_centavos = "estimated", round(guess["price"] * 100)
             label = f'{brand[0]["name"]} {brand[0]["size"]}'.strip() if brand else query
             report = {"origin": f'Typical official price of {guess["count"]} similar {guess["kind"]} items', "price": guess["price"]}
-        elif brand:
-            status, label = "needs_price", f'{brand[0]["name"]} {brand[0]["size"]}'.strip()
+        elif (rough := rough_guide(query, brand)):
+            status, unit_centavos = "estimated", round(rough["price"] * 100)
+            label = f'{brand[0]["name"]} {brand[0]["size"]}'.strip() if brand else query
+            report = {"origin": rough["label"], "price": rough["price"], "low": rough["low"], "high": rough["high"]}
         line_total = unit_centavos * item["quantity"]
         total += line_total
         lines.append({

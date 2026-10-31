@@ -69,14 +69,14 @@ export interface CatalogItem {
   image_url: string | null;
   source: string;
   keywords: string;
-  auto_price: { price: number; kind: string; label: string } | null;
+  auto_price: { price: number; kind: string; label: string; low?: number; high?: number } | null;
 }
 
 export interface BasketLine {
   query: string;
   quantity: number;
   status: "matched" | "custom" | "reported" | "estimated" | "needs_price" | "no_match";
-  report: { store_name?: string; city?: string; price: number; reported_at?: string; origin: string; elsewhere?: boolean } | null;
+  report: { store_name?: string; city?: string; price: number; reported_at?: string; origin: string; elsewhere?: boolean; low?: number; high?: number } | null;
   label: string;
   selected: PriceRow | null;
   unit_price: number;
@@ -152,6 +152,33 @@ export interface BestStores {
   stores: StoreOffer[];
   items_total: number;
   items_priced: number;
+  saving: number;
+}
+
+export interface Mall {
+  name: string;
+  prices: number;
+  stores: number;
+}
+
+export interface MallPrice {
+  item_name: string;
+  store_name: string;
+  mall: string;
+  city: string;
+  origin: string;
+  price: number;
+  reported_at: string;
+}
+
+export interface Impact {
+  verified: number;
+  items: number;
+  stores: number;
+  cities: number;
+  pending: number;
+  trusted: boolean;
+  to_trusted: number;
 }
 
 export interface Route {

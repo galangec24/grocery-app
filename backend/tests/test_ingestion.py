@@ -4,7 +4,7 @@ from datetime import timedelta
 
 import pytest
 
-from app import ingestion
+from app import community, ingestion
 from app.db import utcnow
 
 COLUMNS = "retailer,branch,latitude,longitude,city,product,size,barcode,price,verified_at\n"
@@ -51,7 +51,7 @@ def test_withdrawn_permission_stops_the_source_and_its_prices(client, db, admin)
     assert client.post("/api/v1/market/basket", json=body).json()["lines"][0]["status"] == "reported"
     client.patch("/api/v1/admin/sources/waltermart", json={"permission": "refused"}, headers=admin)
     assert ingestion.can_run(db, "waltermart") is False
-    assert client.post("/api/v1/market/basket", json=body).json()["lines"][0]["status"] == "needs_price"
+    assert client.post("/api/v1/market/basket", json=body).json()["lines"][0]["status"] == "estimated"
 
 
 def test_only_system_admin_manages_sources(client, supervisor):
@@ -100,7 +100,7 @@ def test_old_prices_drop_out(client, db, admin):
     old = (utcnow() - timedelta(days=ingestion.MAX_PRICE_AGE_DAYS + 1)).date().isoformat()
     upload(client, admin, COLUMNS + f"WalterMart,,,,,Piatos Cheese,85g,,30,{old}\n")
     line = client.post("/api/v1/market/basket", json={"items": [{"query": "piatos cheese 85g"}]}).json()["lines"][0]
-    assert line["status"] == "needs_price"
+    assert line["status"] == "estimated"
 
 
 @pytest.mark.parametrize("row,reason", [
@@ -131,3 +131,21 @@ def test_new_sources_start_without_permission(client, admin):
     body = dict(name="New Mart API", kind="retailer_api", terms_url="https://example.com/terms")
     source = client.post("/api/v1/admin/sources", json=body, headers=admin).json()
     assert source["permission"] == "pending" and source["can_run"] is False
+
+
+def test_mall_search_lists_real_prices_by_mall(client, admin):
+    grant(client, admin)
+    feed = f"WalterMart,Cebu,10.31,123.89,Cebu City,Piatos Cheese,85g,,40,{TODAY}\nWalterMart,,,,,Nova BBQ,78g,,35,{TODAY}\n"
+    upload(client, admin, COLUMNS + feed)
+    malls = {m["name"]: m for m in client.get("/api/v1/market/malls").json()}
+    assert malls["WalterMart"]["prices"] == 2 and malls["SM"]["prices"] == 0
+    found = client.get("/api/v1/market/mall-prices", params={"mall": "waltermart", "q": "piatos"}).json()
+    assert found["count"] == 1 and found["results"][0]["store_name"] == "WalterMart Cebu" and found["results"][0]["price"] == 40
+    chain = client.get("/api/v1/market/mall-prices", params={"mall": "WalterMart", "q": "nova"}).json()["results"][0]
+    assert "branches may differ" in chain["origin"]
+
+
+def test_branches_group_under_their_chain(client):
+    assert client.get("/api/v1/market/mall-prices", params={"mall": "SM"}).json()["count"] == 0
+    assert community.chain_of("SM Hypermarket Cebu") == community.chain_of("SM") == "SM"
+    assert community.chain_of("SMART Store") == "SMART Store"

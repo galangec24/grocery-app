@@ -3,12 +3,12 @@
 Most products arrive from the open product databases (see sources/open_data.py).
 Administrators can add more, for example when a mall partners with the app. The list
 below only seeds popular local items that those databases may be missing. The catalog
-holds names and sizes, never invented prices.
+holds names and sizes. A product with no real price yet shows a labelled rough guide.
 """
 import re
 
 from . import comparison as cmp
-from . import search
+from . import estimates, search
 
 _PRODUCTS = {
     "Junk Food": {
@@ -191,7 +191,7 @@ def _public(doc: dict) -> dict:
         "id": doc["_id"], "name": doc["name"], "brand": doc["brand"], "category": doc["category"],
         "size": doc["size"], "variant": doc.get("variant", ""), "barcode": doc.get("barcode"),
         "image_url": doc.get("image_url"), "source": doc.get("source"), "keywords": doc["keywords"],
-        "auto_price": doc.get("auto_price"),
+        "auto_price": doc.get("auto_price") or estimates.guide(f'{doc["name"]} {doc["size"]}', doc["category"], doc["keywords"]),
     }
 
 
